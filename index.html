@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Verdant Vision 3D Planner - McCordsville</title>
+    <link rel="stylesheet" href="src/output.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <script>
+        // Fallback if Tailwind CSS fails to load
+        window.addEventListener('load', () => {
+            const bodyStyles = getComputedStyle(document.body);
+            const testElement = document.createElement('div');
+            testElement.className = 'bg-brand-green';
+            document.body.appendChild(testElement);
+            const bgColor = getComputedStyle(testElement).backgroundColor;
+            document.body.removeChild(testElement);
+            if (bgColor === '' || bgColor === 'transparent' || bgColor === 'rgba(0, 0, 0, 0)') {
+                console.warn("Tailwind CSS might not be loaded. Applying fallback styles.");
+                document.documentElement.classList.add('no-tailwind');
+            }
+        });
+    </script>
+    <style>
+        #loading-screen { position: fixed; width: 100%; height: 100%; background: white; z-index: 1000; display: flex; justify-content: center; align-items: center; font-size: 1.5em; color: #333; }
+        #p5CanvasContainer { width: 100%; height: 100%; overflow: hidden; position: relative; border: 1px solid #ccc; background-color: #f0f0f0; }
+        /* Ensure threeCanvasContainer is also relative for absolute positioning of compass */
+        #threeCanvasContainer { width: 100%; height: 100%; overflow: hidden; position: relative; border: 1px solid #ccc; background-color: #e0e0e0; }
+        canvas { display: block; }
+        .modal { display: none; }
+        .modal.flex { display: flex; }
+        .no-tailwind body { background: #f0f0f0; color: #333; font-family: Arial, sans-serif; }
+        .no-tailwind .control-button { background: #4CAF50; color: white; padding: 10px 15px; border: none; margin: 5px; border-radius: 5px; cursor: pointer; }
+        .no-tailwind .control-button:hover { background: #45a049; }
+        .no-tailwind .control-button-danger { background: #f44336; color: white; padding: 8px 12px; border: none; margin-top: 8px; border-radius: 5px; cursor: pointer; }
+        .no-tailwind .control-button-danger:hover { background: #da190b; }
+        .no-tailwind #sidebar { background: #ddd; padding: 10px; width: 250px; }
+        .no-tailwind header { background: #333; color: white; padding: 15px; text-align: center;}
+    </style>
+</head>
+<body class="flex flex-col h-screen overflow-hidden bg-gray-100 font-sans">
+
+    <div id="loading-screen">Loading Application... <i class="fas fa-spinner fa-spin"></i></div>
+
+    <div id="welcomeModal" class="modal fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full justify-center items-center z-50">
+        <div class="modal-content bg-white w-11/12 md:max-w-md mx-auto rounded shadow-lg p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold text-gray-800">Welcome to Verdant Vision 3D!</h2>
+                <button id="closeWelcomeModalCross" class="text-gray-600 hover:text-gray-800 text-2xl">&times;</button>
+            </div>
+            <p class="mb-3 text-gray-700">Quick Start Guide:</p>
+            <ul class="list-disc list-inside mb-4 space-y-1 text-gray-600">
+                <li>Select elements like 'House' or 'Raised Bed' from the left sidebar.</li>
+                <li>Click to add them to the 2D plan. Drag to position.</li>
+                <li>Use the '2D View' / '3D View' button to toggle perspectives.</li>
+                <li>Navigate in 3D using mouse orbit, zoom, and pan.</li>
+                <li>Save your designs and export images or 3D models!</li>
+            </ul>
+            <button id="closeWelcomeModalButton" class="control-button w-full">Get Started!</button>
+        </div>
+    </div>
+
+    <header class="bg-brand-green text-white p-3 shadow-lg flex justify-between items-center flex-shrink-0">
+        <h1 class="text-xl md:text-2xl font-semibold flex items-center"><i class="fas fa-leaf mr-2"></i>Verdant Vision 3D</h1>
+        <div class="controls flex flex-wrap gap-1 md:gap-2 justify-end items-center">
+            <button id="orientNorthBtn" class="control-button control-button-sm" aria-label="Orient View North"><i class="far fa-compass"></i></button>
+            <button id="toggleViewBtn" class="control-button control-button-sm" aria-label="Toggle 2D/3D View"><i class="fas fa-sync-alt mr-1"></i>2D View</button>
+            <button id="zoomInBtn" class="control-button control-button-sm" aria-label="Zoom In"><i class="fas fa-search-plus"></i></button>
+            <button id="zoomOutBtn" class="control-button control-button-sm" aria-label="Zoom Out"><i class="fas fa-search-minus"></i></button>
+            <button id="saveDesignBtn" class="control-button control-button-sm" aria-label="Save Design"><i class="fas fa-save mr-1"></i>Save</button>
+            <button id="loadDesignBtn" class="control-button control-button-sm" aria-label="Load Design"><i class="fas fa-folder-open mr-1"></i>Load</button>
+            <input type="file" id="loadDesignInput" class="hidden" accept=".json">
+            <button id="exportPngBtn" class="control-button control-button-sm" aria-label="Export as PNG"><i class="fas fa-image mr-1"></i>PNG</button>
+            <button id="exportGltfBtn" class="control-button control-button-sm" aria-label="Export as GLTF"><i class="fas fa-cube mr-1"></i>GLTF</button>
+            <button id="arPreviewBtn" class="control-button control-button-sm" aria-label="AR Preview"><i class="fas fa-vr-cardboard mr-1"></i>AR</button>
+        </div>
+    </header>
+
+    <div class="flex flex-1 overflow-hidden">
+        <aside id="sidebar" class="w-56 md:w-64 bg-gray-50 p-3 space-y-3 overflow-y-auto panel flex-shrink-0 shadow-md">
+            <h3 class="text-lg font-semibold border-b pb-2 text-gray-700">Add Elements</h3>
+            <div>
+                <h4 class="font-medium text-sm text-gray-600 mb-1">Structures</h4>
+                <button class="element control-button w-full text-left text-sm" data-type="house"><i class="fas fa-home mr-2"></i>House (40'x50')</button>
+                <button class="element control-button w-full text-left text-sm mt-1" data-type="shed"><i class="fas fa-store-alt mr-2"></i>Shed (10'x10')</button>
+            </div>
+            <div>
+                <h4 class="font-medium text-sm text-gray-600 mb-1">Garden</h4>
+                <button class="element control-button w-full text-left text-sm" data-type="raised_bed"><i class="fab fa-pagelines mr-2"></i>Raised Bed (4'x8')</button>
+                <button class="element control-button w-full text-left text-sm mt-1" data-type="inground_row"><i class="fas fa-grip-lines mr-2"></i>In-Ground Row (4'x20')</button>
+                <button class="element control-button w-full text-left text-sm mt-1" data-type="compost_bin"><i class="fas fa-recycle mr-2"></i>Compost Bin (4'x4')</button>
+                <select id="plantSelector" class="mt-2 p-2 border rounded w-full text-sm text-gray-700">
+                    <option value="">-- Select Plant --</option>
+                </select>
+                <button id="addPlantBtn" class="control-button w-full text-left text-sm mt-1"><i class="fas fa-seedling mr-2"></i>Add Plant</button>
+            </div>
+            <div>
+                <h4 class="font-medium text-sm text-gray-600 mb-1">Trees</h4>
+                <select id="treeSpeciesSelector" class="mt-1 p-2 border rounded w-full text-sm text-gray-700">
+                    </select>
+                <input type="number" id="treeHeight" placeholder="Height (ft)" class="mt-1 p-2 border rounded w-full text-sm">
+                <input type="number" id="treeCanopy" placeholder="Canopy Dia. (ft)" class="mt-1 p-2 border rounded w-full text-sm">
+                <button id="addTreeBtn" class="control-button w-full text-left text-sm mt-1"><i class="fas fa-tree mr-2"></i>Add Tree</button>
+            </div>
+            <div>
+                <h4 class="font-medium text-sm text-gray-600 mb-1">Yard Features</h4>
+                <button class="element control-button w-full text-left text-sm" data-type="fence_segment"><i class="fas fa-fence mr-2"></i>Fence Segment</button>
+                <button class="element control-button w-full text-left text-sm mt-1" data-type="patio"><i class="fas fa-umbrella-beach mr-2"></i>Patio</button>
+                <button class="element control-button w-full text-left text-sm mt-1" data-type="path"><i class="fas fa-road mr-2"></i>Path Segment</button>
+                <button class="element control-button w-full text-left text-sm mt-1" data-type="sprinkler"><i class="fas fa-tint mr-2"></i>Sprinkler</button>
+                <button class="element control-button w-full text-left text-sm mt-1" data-type="rain_barrel"><i class="fas fa-fill-drip mr-2"></i>Rain Barrel</button>
+                <button class="element control-button w-full text-left text-sm mt-1" data-type="bench"><i class="fas fa-chair mr-2"></i>Bench</button>
+                <button class="element control-button w-full text-left text-sm mt-1" data-type="fire_pit"><i class="fas fa-fire mr-2"></i>Fire Pit</button>
+                <button class="element control-button w-full text-left text-sm mt-1" data-type="lawn_area"><i class="fas fa-leaf mr-2"></i>Lawn Area</button>
+            </div>
+             <div>
+                <h4 class="font-medium text-sm text-gray-600 mb-1 mt-2">Seasonal View</h4>
+                <select id="seasonSelector" class="mt-1 p-2 border rounded w-full text-sm text-gray-700">
+                    <option value="spring">Spring</option>
+                    <option value="summer" selected>Summer</option>
+                    <option value="fall">Fall</option>
+                    <option value="winter">Winter</option>
+                </select>
+            </div>
+            <div>
+                <h4 class="font-medium text-sm text-gray-600 mb-1 mt-2">Sunlight (Time)</h4>
+                <input type="range" id="timeOfDaySlider" min="5" max="20" value="12" class="w-full mt-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                <p class="text-xs text-center text-gray-600 mt-1">Time: <span id="timeOfDayValue">12:00 PM</span></option>
+            </div>
+        </aside>
+
+        <main class="flex-1 relative bg-white border-l border-gray-300">
+            <div id="p5CanvasContainer" class="w-full h-full cursor-grab active:cursor-grabbing">
+            </div>
+            <div id="threeCanvasContainer" class="w-full h-full hidden cursor-grab active:cursor-grabbing">
+                <div id="compassContainer3D" class="compass-container">
+                    <div id="compassNorthLabel" class="compass-label-n">N</div>
+                    <i id="compassArrow3D" class="fas fa-long-arrow-alt-up compass-arrow"></i>
+                </div>
+            </div>
+            <div id="canvasErrorFallback" class="hidden absolute inset-0 flex justify-center items-center bg-red-100 text-red-700 p-4 text-center">
+                <i class="fas fa-exclamation-triangle mr-2"></i> Error initializing canvas. Try refreshing or check browser compatibility.
+            </div>
+        </main>
+
+        <footer id="infoPanel" class="bg-gray-100 p-3 h-auto md:h-auto max-h-[30vh] md:max-h-[25vh] shadow-inner overflow-y-auto panel hidden md:block flex-shrink-0 border-t border-gray-300">
+            <div class="flex justify-between items-start">
+                <div>
+                    <h3 class="text-md font-semibold text-gray-700">Element Information</h3>
+                    <div id="elementInfoContent" class="text-sm text-gray-600 mt-1">Select an element to see its details.</div>
+                    <div id="rotationControlContainer" class="mt-2 hidden">
+                        <label for="elementRotationInput" class="block text-xs font-medium text-gray-700">Rotation (degrees):</label>
+                        <input type="number" id="elementRotationInput" name="elementRotationInput" min="0" max="359" step="1" class="mt-1 p-1 border border-gray-300 rounded-md shadow-sm text-sm w-24">
+                    </div>
+                </div>
+                <button id="deleteElementBtn" class="control-button-danger hidden ml-4 flex-shrink-0"><i class="fas fa-trash-alt mr-1"></i>Delete</button>
+            </div>
+        </footer>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js"></script>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/suncalc@1.8.0/suncalc.min.js"></script>
+    <script type="module" src="js/app.js"></script>
+
+</body>
+</html>

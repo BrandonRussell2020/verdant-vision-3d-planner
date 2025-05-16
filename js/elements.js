@@ -1,0 +1,1 @@
+// This file defines and manages the garden or yard elements, including their properties and behaviors.

@@ -1,0 +1,77 @@
+/* src/input.css */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: 'Inter', sans-serif;
+  overscroll-behavior: none;
+}
+
+.control-button {
+  @apply bg-brand-green hover:bg-green-700 text-white font-bold py-2 px-4 rounded shadow-md transition-all duration-150 ease-in-out flex items-center justify-center;
+}
+.control-button:active {
+  @apply bg-green-800 transform scale-95;
+}
+.control-button:disabled {
+  @apply bg-gray-400 cursor-not-allowed;
+}
+
+.control-button-secondary {
+  @apply bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded shadow-md transition-all duration-150 ease-in-out flex items-center justify-center;
+}
+.control-button-secondary:active {
+  @apply bg-gray-800 transform scale-95;
+}
+
+.control-button-sm {
+  @apply py-1 px-2 text-xs;
+}
+
+.control-button-danger {
+  @apply bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-3 rounded shadow-md transition-all duration-150 ease-in-out text-xs mt-2;
+}
+.control-button-danger:active {
+  @apply bg-red-800 transform scale-95;
+}
+
+.panel {
+  @apply bg-white bg-opacity-90 backdrop-blur-sm shadow-lg rounded p-4;
+}
+
+.tooltip {
+  @apply invisible absolute z-50 bg-gray-800 text-white text-xs rounded py-1 px-2 shadow-lg;
+}
+.has-tooltip:hover .tooltip {
+  @apply visible;
+}
+
+.cursor-grab {
+  cursor: grab;
+}
+.active\:cursor-grabbing:active {
+  cursor: grabbing;
+}
+
+/* 3D Compass Styles */
+.compass-container {
+  @apply absolute bottom-4 right-4 w-16 h-16 bg-gray-700 bg-opacity-50 rounded-full flex items-center justify-center text-white shadow-lg select-none pointer-events-none;
+  /* pointer-events-none so it doesn't interfere with 3D controls */
+}
+
+.compass-arrow {
+  @apply text-2xl text-red-400 transition-transform duration-200 ease-in-out;
+  /* Default arrow points up (North) */
+}
+.compass-label-n {
+    @apply absolute top-0 left-1/2 -translate-x-1/2 text-xs font-semibold;
+}
+/* Optional: Add S, E, W labels if desired */
+/*
+.compass-label-s { @apply absolute bottom-0 left-1/2 -translate-x-1/2 text-xs; }
+.compass-label-e { @apply absolute top-1/2 right-0 -translate-y-1/2 text-xs; }
+.compass-label-w { @apply absolute top-1/2 left-0 -translate-y-1/2 text-xs; }
+*/
+
