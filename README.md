@@ -17,7 +17,7 @@ The project is organized into several key directories and files:
 ## Installation
 1. Clone the repository:
    ```
-   git clone <repository-url>
+   git clone https://github.com/BrandonRussell2020/verdant-vision-3d-planner.git
    ```
 2. Navigate to the project directory:
    ```
