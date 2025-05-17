@@ -62,9 +62,23 @@ export function setupEventListeners(handlers) {
 
     // Custom House Controls
     document.getElementById('updateCustomHouseBtn').addEventListener('click', handlers.onUpdateCustomHouse);
-    document.getElementById('customHouseHeightInput').addEventListener('change', handlers.onUpdateCustomHouse);
-    document.getElementById('customHouseRoofTypeSelect').addEventListener('change', handlers.onUpdateCustomHouse);
+    
+    const wallHeightInput = document.getElementById('customHouseWallHeightInput');
+    if (wallHeightInput) { // Renamed from customHouseHeightInput
+        wallHeightInput.addEventListener('change', handlers.onUpdateCustomHouse);
+        wallHeightInput.addEventListener('input', handlers.onUpdateCustomHouse); // For live update if desired
+    }
 
+    const roofTypeSelect = document.getElementById('customHouseRoofTypeSelect');
+    if (roofTypeSelect) {
+        roofTypeSelect.addEventListener('change', handlers.onUpdateCustomHouse);
+    }
+
+    const wallColorInput = document.getElementById('customHouseWallColorInput');
+    if (wallColorInput) {
+        wallColorInput.addEventListener('change', handlers.onUpdateCustomHouse);
+        wallColorInput.addEventListener('input', handlers.onUpdateCustomHouse); // For live color update
+    }
 }
 
 // --- Modal Controls ---
@@ -110,7 +124,7 @@ export function showElementInfo(element, plantLibrary, customHouseData) {
         detailsHtml += `Position (ft): X: ${element.x.toFixed(1)}, Y: ${element.y.toFixed(1)}<br>`;
         if (element.width && element.depth) {
             detailsHtml += `Size (ft): W: ${element.width.toFixed(1)}, D: ${element.depth.toFixed(1)}`;
-            if (element.height) detailsHtml += `, H: ${element.height.toFixed(1)}`;
+            if (element.height) detailsHtml += `, H: ${element.height.toFixed(1)}`; // This is wallHeight for custom_house
             detailsHtml += `<br>`;
         }
         if (element.rotation !== undefined) {
@@ -127,8 +141,10 @@ export function showElementInfo(element, plantLibrary, customHouseData) {
              detailsHtml += `Species: ${element.data.displayName || element.data.species}<br>`;
              detailsHtml += `Season: ${element.data.currentSeason || 'N/A'}<br>`;
         } else if (element.type === 'custom_house' && customHouseData) {
-            detailsHtml += `Roof: ${customHouseData.roofType}<br>`;
-            showCustomHouseControls(customHouseData.height, customHouseData.roofType);
+            detailsHtml += `Wall Height: ${customHouseData.wallHeight.toFixed(1)} ft<br>`;
+            detailsHtml += `Roof Type: ${customHouseData.roofType}<br>`;
+            detailsHtml += `Wall Color: <span style="display:inline-block; width:12px; height:12px; background-color:${customHouseData.wallColor}; border:1px solid #ccc; vertical-align:middle;"></span> ${customHouseData.wallColor}<br>`;
+            showCustomHouseControls(customHouseData.wallHeight, customHouseData.roofType, customHouseData.wallColor);
         } else {
             hideCustomHouseControls();
         }
@@ -233,13 +249,16 @@ export function hideDrawingInstructions(element) {
     if (element) element.classList.add('hidden');
 }
 
-export function showCustomHouseControls(height, roofType) {
+export function showCustomHouseControls(wallHeight, roofType, wallColor) {
     const container = document.getElementById('customHouseControlsContainer');
-    const heightInput = document.getElementById('customHouseHeightInput');
+    const wallHeightInput = document.getElementById('customHouseWallHeightInput'); // Renamed from customHouseHeightInput
     const roofSelect = document.getElementById('customHouseRoofTypeSelect');
-    if (container && heightInput && roofSelect) {
-        heightInput.value = height;
+    const wallColorInput = document.getElementById('customHouseWallColorInput');
+
+    if (container && wallHeightInput && roofSelect && wallColorInput) {
+        wallHeightInput.value = wallHeight;
         roofSelect.value = roofType;
+        wallColorInput.value = wallColor;
         container.classList.remove('hidden');
     }
 }
@@ -249,11 +268,4 @@ export function hideCustomHouseControls() {
     if (container) {
         container.classList.add('hidden');
     }
-}
-
-
-// --- Context for App.js (Optional, if ui-controls needs to access app state directly) ---
-let appContextRef = null; 
-export function setAppContextForUiControls(context) {
-    appContextRef = context;
 }

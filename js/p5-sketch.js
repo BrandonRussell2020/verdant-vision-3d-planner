@@ -31,9 +31,10 @@ let dragStartElementPosFt = { x:0, y:0 };
 // Drawing mode state
 let isInDrawingModeP5 = false;
 let currentDrawingPolygonTypeP5 = null; // 'lot_polygon' or 'home_builder_polygon'
-let currentPolygonPointsP5 = []; // Points in canvas pixel coordinates for drawing
+// let currentPolygonPointsP5 = []; // Points in canvas pixel coordinates for drawing - REMOVED, use currentPolygonPointsFt
 let currentPolygonPointsFt = []; // Points in lot feet coordinates for logic
-let mousePreviewLineP5 = null; // For drawing line to cursor
+let mousePreviewLineP5 = null; // For drawing line to cursor {x1Ft, y1Ft, x2Ft, y2Ft}
+let hoverSnapPointFt = null; // For showing snap point on hover {x, y} in Ft
 let isShapeClosedP5 = false;
 let isShapeValidPreviewP5 = true; // For visual feedback on polygon validity
 
@@ -82,7 +83,7 @@ export function initP5Sketch(sketch, appConfig) {
             p5Canvas.mouseReleased(handleP5MouseReleased);
             p5Instance.mouseDragged = handleP5MouseDragged; 
             p5Canvas.elt.addEventListener('contextmenu', (e) => e.preventDefault());
-            p5Canvas.elt.addEventListener('mousemove', handleP5MouseMoveForDrawing); // For preview line
+            p5Canvas.elt.addEventListener('mousemove', handleP5MouseMoveForDrawing); // For preview line & hover snap point
         }
         redrawP5(p5Instance); 
     };
@@ -132,17 +133,34 @@ export function initP5Sketch(sketch, appConfig) {
         }
         
         // Drawing mode visual feedback
-        if (isInDrawingModeP5 && currentPolygonPointsP5.length > 0) {
-            drawPolygonPreview();
-            if (mousePreviewLineP5 && !isShapeClosedP5) {
-                p5Instance.stroke(0, 123, 255, 150);
-                p5Instance.strokeWeight(1.5 / currentZoomScaleP5);
-                p5Instance.drawingContext.setLineDash([3, 3]);
-                p5Instance.line(mousePreviewLineP5.x1, mousePreviewLineP5.y1, mousePreviewLineP5.x2, mousePreviewLineP5.y2);
-                p5Instance.drawingContext.setLineDash([]);
+        if (isInDrawingModeP5) {
+            if (hoverSnapPointFt) {
+                p5Instance.push();
+                p5Instance.fill(0, 100, 255, 100); // Semi-transparent blue for hover snap point
+                p5Instance.noStroke();
+                const hoverXPx = hoverSnapPointFt.x * PIXELS_PER_FOOT_P5;
+                const hoverYPx = hoverSnapPointFt.y * PIXELS_PER_FOOT_P5;
+                const hoverPointSize = 8 / currentZoomScaleP5;
+                p5Instance.ellipse(hoverXPx, hoverYPx, hoverPointSize, hoverPointSize);
+                p5Instance.pop();
+            }
+            if (currentPolygonPointsFt.length > 0) {
+                drawPolygonPreview(); // Uses currentPolygonPointsFt (world coords in Ft)
+                if (mousePreviewLineP5 && !isShapeClosedP5) {
+                    p5Instance.stroke(0, 123, 255, 150);
+                    p5Instance.strokeWeight(1.5 / currentZoomScaleP5);
+                    p5Instance.drawingContext.setLineDash([3, 3]);
+                    // mousePreviewLineP5 stores Ft coordinates, convert to p5 world pixels
+                    p5Instance.line(
+                        mousePreviewLineP5.x1Ft * PIXELS_PER_FOOT_P5, 
+                        mousePreviewLineP5.y1Ft * PIXELS_PER_FOOT_P5, 
+                        mousePreviewLineP5.x2Ft * PIXELS_PER_FOOT_P5, 
+                        mousePreviewLineP5.y2Ft * PIXELS_PER_FOOT_P5
+                    );
+                    p5Instance.drawingContext.setLineDash([]);
+                }
             }
         }
-
         p5Instance.pop(); 
     };
 }
@@ -323,6 +341,7 @@ function drawP5CustomHouse(house, pxPerFtUnit, currentSelectedAppElement) {
 
     p5Instance.beginShape();
     house.outline.forEach(p => {
+        // outline points are already relative to house center in feet
         p5Instance.vertex(p.x * pxPerFtUnit, p.y * pxPerFtUnit);
     });
     p5Instance.endShape(p5Instance.CLOSE);
@@ -357,19 +376,26 @@ function p5CanvasToLotCoords(mouseX_canvas, mouseY_canvas) {
         lotCenterYFt = lotCfg.depth / 2;
     }
 
-    let x_world = mouseX_canvas - p5Canvas.width / 2;
-    let y_world = mouseY_canvas - p5Canvas.height / 2;
+    // Mouse coords relative to canvas center (view coords in pixels)
+    let x_transformed = mouseX_canvas - p5Canvas.width / 2;
+    let y_transformed = mouseY_canvas - p5Canvas.height / 2;
     
-    x_world /= currentZoomScaleP5;
-    y_world /= currentZoomScaleP5;
+    // Undo scaling (convert to world-scale pixels, still relative to view center)
+    x_transformed /= currentZoomScaleP5;
+    y_transformed /= currentZoomScaleP5;
     
-    x_world += currentPanOffsetP5.x * PIXELS_PER_FOOT_P5;
-    y_world += currentPanOffsetP5.y * PIXELS_PER_FOOT_P5;
+    // Undo panning (add pan offset in world-scale pixels)
+    // currentPanOffsetP5 is in feet, convert to pixels at current world scale
+    x_transformed += currentPanOffsetP5.x * PIXELS_PER_FOOT_P5;
+    y_transformed += currentPanOffsetP5.y * PIXELS_PER_FOOT_P5;
 
-    x_world += lotCenterXFt * PIXELS_PER_FOOT_P5;
-    y_world += lotCenterYFt * PIXELS_PER_FOOT_P5;
+    // Undo lot centering (add lot center offset in world-scale pixels)
+    // This effectively translates coordinates so that (0,0) in feet corresponds to the world origin used for drawing
+    x_transformed += lotCenterXFt * PIXELS_PER_FOOT_P5;
+    y_transformed += lotCenterYFt * PIXELS_PER_FOOT_P5;
     
-    return { x: x_world / PIXELS_PER_FOOT_P5, y: y_world / PIXELS_PER_FOOT_P5 };
+    // Convert final world pixel coordinates to feet
+    return { x: x_transformed / PIXELS_PER_FOOT_P5, y: y_transformed / PIXELS_PER_FOOT_P5 };
 }
 
 
@@ -384,7 +410,6 @@ function handleP5MousePressed() {
         const snappedYFt = Math.round(lotMouseCoords.y / GRID_SIZE_FT) * GRID_SIZE_FT;
 
         currentPolygonPointsFt.push({ x: snappedXFt, y: snappedYFt });
-        currentPolygonPointsP5.push({ x: p5Instance.mouseX, y: p5Instance.mouseY }); // Store raw mouse for direct drawing
         
         isShapeClosedP5 = false; // Reset on new point
         if (currentPolygonPointsFt.length > 1) {
@@ -408,10 +433,10 @@ function handleP5MousePressed() {
     if (currentCustomHouse) {
         const house = currentCustomHouse;
         // Transform mouse to house's local coordinate system
-        const dx = lotMouseCoords.x - (house.x + house.width / 2);
+        const dx = lotMouseCoords.x - (house.x + house.width / 2); // Mouse relative to house center (feet)
         const dy = lotMouseCoords.y - (house.y + house.depth / 2);
         const angleRad = -p5Instance.radians(house.rotation || 0); // Counter-rotate mouse
-        const localMouseX = dx * Math.cos(angleRad) - dy * Math.sin(angleRad);
+        const localMouseX = dx * Math.cos(angleRad) - dy * Math.sin(angleRad); // Now in house local feet
         const localMouseY = dx * Math.sin(angleRad) + dy * Math.cos(angleRad);
 
         if (isPointInPolygon({x: localMouseX, y: localMouseY}, house.outline)) {
@@ -422,11 +447,13 @@ function handleP5MousePressed() {
     if (!newlySelectedElement) { // If custom house not selected, check other elements
         for (let i = elementsToCheck.length - 1; i >= 0; i--) {
             const el = elementsToCheck[i];
-            // Create a temporary rotated bounding box or check point-in-rotated-rect
-            // For simplicity, we'll use an axis-aligned bounding box check first,
-            // then a more precise check if rotation is involved.
-            const mouseRotated = rotatePoint(lotMouseCoords, {x: el.x + el.width/2, y: el.y + el.depth/2}, -(el.rotation || 0));
+            // Element's x,y is top-left. Calculate center for rotation.
+            const elCenterXFt = el.x + el.width/2;
+            const elCenterYFt = el.y + el.depth/2;
+            
+            const mouseRotated = rotatePoint(lotMouseCoords, {x: elCenterXFt, y: elCenterYFt}, -(el.rotation || 0));
 
+            // Check against element's bounding box (defined by its top-left x,y and width/depth)
             if (mouseRotated.x >= el.x && mouseRotated.x <= el.x + el.width &&
                 mouseRotated.y >= el.y && mouseRotated.y <= el.y + el.depth) {
                 newlySelectedElement = el; break;
@@ -482,7 +509,8 @@ function handleP5MouseDragged() {
             if (config.onElementMove) {
                 config.onElementMove(selectedP5ElementData.id, newElementX_ft, newElementY_ft);
             }
-            redrawP5(p5Instance);
+            // Element data is updated by app.js, redraw will pick up new positions
+            redrawP5(p5Instance); 
         }
     }
 }
@@ -492,19 +520,40 @@ function handleP5MouseReleased() {
 }
 
 function handleP5MouseMoveForDrawing(event) {
-    if (isInDrawingModeP5 && currentPolygonPointsP5.length > 0 && !isShapeClosedP5) {
-        const lastPointCanvas = currentPolygonPointsP5[currentPolygonPointsP5.length - 1];
-        const rect = p5Canvas.elt.getBoundingClientRect(); // Get canvas position
-        const mouseXInCanvas = event.clientX - rect.left;
-        const mouseYInCanvas = event.clientY - rect.top;
+    if (!p5Canvas || !p5Instance) return;
+    const rect = p5Canvas.elt.getBoundingClientRect();
+    const mouseXInCanvas = event.clientX - rect.left;
+    const mouseYInCanvas = event.clientY - rect.top;
 
-        mousePreviewLineP5 = {
-            x1: lastPointCanvas.x, y1: lastPointCanvas.y,
-            x2: mouseXInCanvas,    y2: mouseYInCanvas
-        };
+    if (mouseXInCanvas < 0 || mouseXInCanvas > p5Canvas.width || mouseYInCanvas < 0 || mouseYInCanvas > p5Canvas.height) {
+        hoverSnapPointFt = null;
+        mousePreviewLineP5 = null;
+        if (isInDrawingModeP5) redrawP5(p5Instance); // Redraw to remove hover point if it was visible
+        return;
+    }
+    
+    if (isInDrawingModeP5) {
+        const lotMouseCoords = p5CanvasToLotCoords(mouseXInCanvas, mouseYInCanvas);
+        const snappedXFt = Math.round(lotMouseCoords.x / GRID_SIZE_FT) * GRID_SIZE_FT;
+        const snappedYFt = Math.round(lotMouseCoords.y / GRID_SIZE_FT) * GRID_SIZE_FT;
+        hoverSnapPointFt = { x: snappedXFt, y: snappedYFt };
+
+        if (currentPolygonPointsFt.length > 0 && !isShapeClosedP5) {
+            const lastPointFt = currentPolygonPointsFt[currentPolygonPointsFt.length - 1];
+            mousePreviewLineP5 = { // Store in Ft coordinates
+                x1Ft: lastPointFt.x, y1Ft: lastPointFt.y,
+                x2Ft: hoverSnapPointFt.x, y2Ft: hoverSnapPointFt.y // Use the snapped hover point
+            };
+        } else {
+            mousePreviewLineP5 = null;
+        }
         redrawP5(p5Instance);
     } else {
-        mousePreviewLineP5 = null;
+        if (hoverSnapPointFt) { // If previously drawing and now not, clear the point
+             hoverSnapPointFt = null;
+             redrawP5(p5Instance);
+        }
+        mousePreviewLineP5 = null; // Also clear preview line if not in drawing mode
     }
 }
 
@@ -513,9 +562,10 @@ export function setDrawingModeP5(isDrawing, mode) {
     isInDrawingModeP5 = isDrawing;
     currentDrawingPolygonTypeP5 = isDrawing ? mode : null;
     if (!isDrawing) {
-        currentPolygonPointsP5 = [];
+        // currentPolygonPointsP5 = []; // REMOVED
         currentPolygonPointsFt = [];
         mousePreviewLineP5 = null;
+        hoverSnapPointFt = null; // Clear hover point when exiting drawing mode
         isShapeClosedP5 = false;
         isShapeValidPreviewP5 = true;
     }
@@ -524,9 +574,10 @@ export function setDrawingModeP5(isDrawing, mode) {
 }
 
 export function clearDrawingP5() {
-    currentPolygonPointsP5 = [];
+    // currentPolygonPointsP5 = []; // REMOVED
     currentPolygonPointsFt = [];
     mousePreviewLineP5 = null;
+    hoverSnapPointFt = null; // Clear hover point
     isShapeClosedP5 = false;
     isShapeValidPreviewP5 = true;
     redrawP5(p5Instance);
@@ -539,32 +590,9 @@ function drawPolygonPreview() {
     if (!p5Instance || currentPolygonPointsFt.length === 0) return;
 
     // Convert currentPolygonPointsFt to canvas coordinates for drawing
-    const lotCfg = config.lotConfigRef();
-    let lotCenterXFt, lotCenterYFt;
-    if (lotCfg.isCustomShape && lotCfg.customShapePoints.length > 0) {
-        const bounds = getPolygonBoundsFt(lotCfg.customShapePoints);
-        lotCenterXFt = bounds.minX + bounds.width / 2;
-        lotCenterYFt = bounds.minY + bounds.height / 2;
-    } else {
-        lotCenterXFt = lotCfg.width / 2;
-        lotCenterYFt = lotCfg.depth / 2;
-    }
-    
-    const tempCanvasPoints = currentPolygonPointsFt.map(pFt => {
-        // Transform from lot feet to p5 world pixels (before view transforms)
-        const worldX = pFt.x * PIXELS_PER_FOOT_P5;
-        const worldY = pFt.y * PIXELS_PER_FOOT_P5;
-        return {x: worldX, y: worldY};
-    });
-
-
-    p5Instance.push();
-    // Apply same transforms as in main draw loop to align with grid/elements
-    p5Instance.translate(p5Canvas.width / 2, p5Canvas.height / 2);
-    p5Instance.scale(currentZoomScaleP5);
-    p5Instance.translate(-currentPanOffsetP5.x * PIXELS_PER_FOOT_P5, -currentPanOffsetP5.y * PIXELS_PER_FOOT_P5);
-    p5Instance.translate(-lotCenterXFt * PIXELS_PER_FOOT_P5, -lotCenterYFt * PIXELS_PER_FOOT_P5);
-
+    // These points are already in the correct world feet, snapped.
+    // They need to be drawn in the p5 world space, before view transforms are popped.
+    // The main draw loop already sets up the correct transform.
 
     if (isShapeValidPreviewP5) {
         p5Instance.fill(0, 123, 255, 30); // Light blue for valid preview
@@ -576,16 +604,17 @@ function drawPolygonPreview() {
     p5Instance.strokeWeight(1.5 / currentZoomScaleP5);
 
     p5Instance.beginShape();
-    tempCanvasPoints.forEach(p => p5Instance.vertex(p.x, p.y));
+    currentPolygonPointsFt.forEach(pFt => {
+        p5Instance.vertex(pFt.x * PIXELS_PER_FOOT_P5, pFt.y * PIXELS_PER_FOOT_P5);
+    });
     p5Instance.endShape(isShapeClosedP5 ? p5Instance.CLOSE : undefined);
 
     // Draw vertices
     p5Instance.fill(0, 123, 255);
     p5Instance.noStroke();
-    tempCanvasPoints.forEach(p => {
-        p5Instance.ellipse(p.x, p.y, 6 / currentZoomScaleP5, 6 / currentZoomScaleP5);
+    currentPolygonPointsFt.forEach(pFt => {
+        p5Instance.ellipse(pFt.x * PIXELS_PER_FOOT_P5, pFt.y * PIXELS_PER_FOOT_P5, 6 / currentZoomScaleP5, 6 / currentZoomScaleP5);
     });
-    p5Instance.pop();
 }
 
 // --- Polygon Utilities ---

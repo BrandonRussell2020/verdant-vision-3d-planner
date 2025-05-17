@@ -40,6 +40,10 @@ const HOUSE_FOOTPRINT = { width: 40, depth: 50, height: 15 }; // For default hou
 const SHED_FOOTPRINT = { width: 10, depth: 10, height: 8 };
 const ROTATABLE_ELEMENT_TYPES = ['house', 'shed', 'raised_bed', 'compost_bin', 'bench', 'patio', 'fire_pit', 'rain_barrel', 'custom_house'];
 
+const DEFAULT_CUSTOM_HOUSE_WALL_HEIGHT = 15;
+const DEFAULT_CUSTOM_HOUSE_ROOF_TYPE = 'flat';
+const DEFAULT_CUSTOM_HOUSE_WALL_COLOR = '#d3c1a4';
+
 
 // --- Global Application State ---
 let currentView = '2D'; // '2D' or '3D'
@@ -61,7 +65,8 @@ let lotConfig = {
 };
 let currentDrawingMode = null; // null, 'lot_polygon', 'home_builder_polygon'
 
-let customHouse = null; // { id: 'custom_house', type: 'custom_house', name: 'Custom House', x: 0, y: 0, width: 0, depth: 0, rotation:0, outline: [], height: 15, roofType: 'flat', threeInstance: null }
+// customHouse structure: { id, type, name, x, y, width, depth, rotation, outline[], wallHeight, roofType, wallColor, threeInstance }
+let customHouse = null; 
 
 // --- DOM Element References ---
 const loadingScreen = document.getElementById('loading-screen');
@@ -90,9 +95,11 @@ const activateHomeBuilderBtn = document.getElementById('activateHomeBuilderBtn')
 const finishHomeBuilderBtn = document.getElementById('finishHomeBuilderBtn');
 const cancelHomeBuilderBtn = document.getElementById('cancelHomeBuilderBtn');
 
+// Custom House Controls (IDs from HTML)
 const customHouseControlsContainer = document.getElementById('customHouseControlsContainer');
-const customHouseHeightInput = document.getElementById('customHouseHeightInput');
+const customHouseWallHeightInput = document.getElementById('customHouseWallHeightInput');
 const customHouseRoofTypeSelect = document.getElementById('customHouseRoofTypeSelect');
+const customHouseWallColorInput = document.getElementById('customHouseWallColorInput');
 const updateCustomHouseBtn = document.getElementById('updateCustomHouseBtn');
 
 
@@ -101,7 +108,7 @@ const appContext = {
     elements: () => elements,
     customHouse: () => customHouse,
     selectedElement: () => selectedElement,
-    getLotConfig: () => lotConfig, // Provide access to current lotConfig
+    getLotConfig: () => lotConfig, 
     handleElementMove,
     handleElementSelect,
     p5Instance: () => p5Instance,
@@ -114,12 +121,39 @@ const appContext = {
     validateAndPlaceElement,
 };
 
+// --- Polygon Helper Functions ---
+function getPolygonSignedArea(points) {
+    let area = 0;
+    for (let i = 0; i < points.length; i++) {
+        const p1 = points[i];
+        const p2 = points[(i + 1) % points.length];
+        area += (p1.x * p2.y) - (p2.x * p1.y);
+    }
+    return area / 2;
+}
+
+function ensureWindingOrder(points, targetOrder = 'ccw') { // ccw for Three.js Shape
+    if (!points || points.length < 3) return points; 
+    const area = getPolygonSignedArea(points);
+    if (targetOrder === 'ccw' && area < 0) { 
+        return points.slice().reverse(); 
+    } else if (targetOrder === 'cw' && area > 0) { 
+        return points.slice().reverse(); 
+    }
+    return points; 
+}
+
+
 // --- Initialization Function ---
 async function main() {
     try {
         console.log("Verdant Vision 3D: Initializing application...");
         setAppContextForThree(appContext);
         setAppContextForP5(appContext);
+        // Pass app context to ui-controls if it needs direct access (currently using handlers)
+        // import { setAppContextForUiControls } from './ui-controls.js'; 
+        // setAppContextForUiControls(appContext);
+
 
         if (typeof p5 === 'undefined') throw new Error("p5.js library not loaded.");
         if (typeof THREE === 'undefined') throw new Error("Three.js library not loaded.");
@@ -141,7 +175,7 @@ async function main() {
 
         p5Instance = new p5(sketch => {
             initP5Sketch(sketch, {
-                lotConfigRef: () => lotConfig, // Pass by reference
+                lotConfigRef: () => lotConfig, 
                 elementsRef: () => elements,
                 customHouseRef: () => customHouse,
                 onElementSelect: handleElementSelect,
@@ -157,13 +191,13 @@ async function main() {
         }, p5CanvasContainer);
 
         initThreeScene(threeCanvasContainer, {
-            lotConfigRef: () => lotConfig, // Pass by reference
-            onElementSelect: handleElementSelect, // For selecting elements in 3D
-            elementsRef: () => elements, // For GLTF export
-            customHouseRef: () => customHouse, // For GLTF export
+            lotConfigRef: () => lotConfig, 
+            onElementSelect: handleElementSelect, 
+            elementsRef: () => elements, 
+            customHouseRef: () => customHouse, 
             getGLTFExporter: () => GLTFExporter, OrbitControls, GLTFLoader,
         });
-        updateGroundPlane(); // Initial ground plane based on default lotConfig
+        updateGroundPlane(); 
 
         populatePlantSelector(plantLibrary, document.getElementById('plantSelector'));
 
@@ -175,7 +209,7 @@ async function main() {
                 } else {
                     renderThreeScene();
                 }
-                 if (currentDrawingMode) { // Ensure drawing mode is exited on view toggle
+                 if (currentDrawingMode) { 
                     cancelDrawing();
                 }
             },
@@ -193,7 +227,6 @@ async function main() {
             onDeselectAll: () => handleElementSelect(null, 'escape_key'),
             onElementRotationChange: handleElementRotation,
             onOrientNorth: orientViewNorth,
-            // Lot and Home Builder UI events
             onUpdateLotRect: handleUpdateLotRect,
             onDrawLotShape: () => startDrawingMode('lot_polygon'),
             onFinishDrawingLot: () => finishDrawingMode('lot_polygon'),
@@ -229,7 +262,7 @@ async function main() {
 
 // --- Drawing Mode Management ---
 function startDrawingMode(mode) {
-    if (currentDrawingMode) { // If already in a drawing mode, cancel it first
+    if (currentDrawingMode) { 
         cancelDrawing();
     }
     currentDrawingMode = mode;
@@ -240,7 +273,7 @@ function startDrawingMode(mode) {
     } else if (mode === 'home_builder_polygon') {
         updateHomeBuilderUI(true);
     }
-    if (currentView !== '2D') { // Switch to 2D view if not already
+    if (currentView !== '2D') { 
         toggleViewBtn.click();
     }
 }
@@ -248,27 +281,29 @@ function startDrawingMode(mode) {
 function finishDrawingMode(mode) {
     if (!p5Instance) return;
     if (mode === 'lot_polygon') {
-        const polygon = getCurrentLotPolygonP5();
+        let polygon = getCurrentLotPolygonP5();
         if (polygon && polygon.length >= 3 && isLotShapeValidP5(polygon)) {
+            polygon = ensureWindingOrder(polygon, 'ccw'); 
             lotConfig.isCustomShape = true;
-            lotConfig.customShapePoints = [...polygon]; // Store a copy
-            lotConfig.width = 0; // Indicate custom shape, actual bounds will be derived
+            lotConfig.customShapePoints = [...polygon]; 
+            lotConfig.width = 0; 
             lotConfig.depth = 0;
             console.log("Custom lot shape defined:", lotConfig.customShapePoints);
-            updateGroundPlane(); // Update 3D ground
-            if (p5Instance) setLotConfigP5(lotConfig); // Update p5 lot config
+            updateGroundPlane(); 
+            if (p5Instance) setLotConfigP5(lotConfig); 
         } else {
             alert("Invalid lot shape. Please ensure the shape is closed and not self-intersecting, with at least 3 points.");
-            return; // Don't exit drawing mode if invalid
+            return; 
         }
     } else if (mode === 'home_builder_polygon') {
-        const polygon = getCurrentHousePolygonP5();
+        let polygon = getCurrentHousePolygonP5(); 
         if (polygon && polygon.length >= 3 && isHouseShapeValidP5(polygon)) {
-            // If a custom house already exists, remove it first
+            polygon = ensureWindingOrder(polygon, 'ccw'); 
+
             if (customHouse && customHouse.threeInstance) {
                  if(typeof removeCustomHouseFromThree === 'function') removeCustomHouseFromThree(customHouse.threeInstance);
             }
-            // Calculate center and dimensions for the new custom house
+            
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
             polygon.forEach(p => {
                 minX = Math.min(minX, p.x);
@@ -282,35 +317,41 @@ function finishDrawingMode(mode) {
             const houseCenterY = minY + houseDepth / 2;
 
             customHouse = {
-                id: 'custom_house_' + nextElementId++, // Unique ID
+                id: 'custom_house_' + nextElementId++, 
                 type: 'custom_house',
                 name: 'Custom House',
-                x: houseCenterX - houseWidth / 2, // Store top-left for consistency with other elements if needed
+                x: houseCenterX - houseWidth / 2, 
                 y: houseCenterY - houseDepth / 2,
                 width: houseWidth,
                 depth: houseDepth,
                 rotation: 0,
-                outline: polygon.map(p => ({ x: p.x - houseCenterX, y: p.y - houseCenterY })), // Store outline relative to center
-                height: parseFloat(customHouseHeightInput.value) || 15,
-                roofType: customHouseRoofTypeSelect.value || 'flat',
-                threeInstance: null, // Will be set by three-scene.js
+                outline: polygon.map(p => ({ x: p.x - houseCenterX, y: p.y - houseCenterY })), 
+                wallHeight: parseFloat(customHouseWallHeightInput.value) || DEFAULT_CUSTOM_HOUSE_WALL_HEIGHT,
+                roofType: customHouseRoofTypeSelect.value || DEFAULT_CUSTOM_HOUSE_ROOF_TYPE,
+                wallColor: customHouseWallColorInput.value || DEFAULT_CUSTOM_HOUSE_WALL_COLOR,
+                threeInstance: null, 
             };
+            // The 'height' property for customHouse in elementInfo will be wallHeight.
+            // The actual 3D model height will be wallHeight + roof height.
+            customHouse.height = customHouse.wallHeight; 
+
+
             console.log("Custom house defined:", customHouse);
             addCustomHouseToThree(customHouse);
-            handleElementSelect(customHouse.id, 'programmatic_add'); // Select the new house
-            showCustomHouseControls(customHouse.height, customHouse.roofType);
+            handleElementSelect(customHouse.id, 'programmatic_add'); 
+            showCustomHouseControls(customHouse.wallHeight, customHouse.roofType, customHouse.wallColor);
         } else {
             alert("Invalid house shape. Please ensure the shape is closed and not self-intersecting, with at least 3 points.");
-            return; // Don't exit drawing mode if invalid
+            return; 
         }
     }
-    cancelDrawing(); // Exits drawing mode common logic
+    cancelDrawing(); 
 }
 
-function cancelDrawing() { // Renamed for clarity
+function cancelDrawing() { 
     if (p5Instance) {
         setDrawingModeP5(false, null);
-        clearDrawingP5(); // Clear any partial drawings from p5
+        clearDrawingP5(); 
     }
     hideDrawingInstructions(drawingInstructions);
     if (currentDrawingMode === 'lot_polygon') {
@@ -321,14 +362,12 @@ function cancelDrawing() { // Renamed for clarity
     currentDrawingMode = null;
     if (p5Instance) redrawP5(p5Instance);
 }
-function cancelDrawingMode(mode){ // Wrapper for specific cancel buttons
+function cancelDrawingMode(mode){ 
     cancelDrawing();
 }
 
 
 function handlePolygonVertexAdd(point, mode) {
-    // This function could provide feedback as points are added, if needed.
-    // For now, it's mainly a placeholder for potential future use.
     // console.log(`Vertex added for ${mode}:`, point);
 }
 
@@ -346,31 +385,37 @@ function handleUpdateLotRect() {
     lotConfig.customShapePoints = [];
 
     console.log("Rectangular lot updated:", lotConfig);
-    updateGroundPlane(); // Update 3D ground
+    updateGroundPlane(); 
     if (p5Instance) {
-        setLotConfigP5(lotConfig); // Update p5 lot config
+        setLotConfigP5(lotConfig); 
         redrawP5(p5Instance);
     }
 }
 
 function handleUpdateCustomHouse() {
     if (!customHouse || selectedElement?.type !== 'custom_house') {
-        alert("No custom house selected or it's not a custom house.");
+        // Silently return if no custom house is selected, or an element that is not a custom house is selected.
+        // This can happen if the input events fire when not intended.
         return;
     }
-    const newHeight = parseFloat(customHouseHeightInput.value);
+    const newWallHeight = parseFloat(customHouseWallHeightInput.value);
     const newRoofType = customHouseRoofTypeSelect.value;
+    const newWallColor = customHouseWallColorInput.value;
 
-    if (isNaN(newHeight) || newHeight <= 0) {
-        alert("Please enter a valid positive number for house height.");
+    if (isNaN(newWallHeight) || newWallHeight <= 0) {
+        alert("Please enter a valid positive number for house wall height.");
+        // Restore previous valid value to UI if possible, or just return
+        customHouseWallHeightInput.value = customHouse.wallHeight;
         return;
     }
-    customHouse.height = newHeight;
+    customHouse.wallHeight = newWallHeight;
+    customHouse.height = newWallHeight; // Ensure the generic 'height' property for info panel is also updated
     customHouse.roofType = newRoofType;
+    customHouse.wallColor = newWallColor;
     
     updateCustomHouseInThree(customHouse);
-    if (p5Instance) redrawP5(p5Instance); // May need specific redraw logic for house in p5 if it shows height/roof
-    showElementInfo(customHouse, plantLibrary); // Refresh info panel
+    if (p5Instance) redrawP5(p5Instance); 
+    showElementInfo(customHouse, plantLibrary, customHouse); // Refresh info panel
 }
 
 
@@ -418,8 +463,9 @@ function handleAddElement(type, specificData = {}, elementNameFromSpecific) {
     }
     try {
         const p5LotConfig = p5Instance ? getLotConfigP5() : lotConfig;
-        const currentLotWidth = p5LotConfig.isCustomShape ? (Math.max(...p5LotConfig.customShapePoints.map(p => p.x)) - Math.min(...p5LotConfig.customShapePoints.map(p => p.x))) : p5LotConfig.width;
-        const currentLotDepth = p5LotConfig.isCustomShape ? (Math.max(...p5LotConfig.customShapePoints.map(p => p.y)) - Math.min(...p5LotConfig.customShapePoints.map(p => p.y))) : p5LotConfig.depth;
+        const currentLotWidth = p5LotConfig.isCustomShape && p5LotConfig.customShapePoints.length > 0 ? (Math.max(...p5LotConfig.customShapePoints.map(p => p.x)) - Math.min(...p5LotConfig.customShapePoints.map(p => p.x))) : p5LotConfig.width;
+        const currentLotDepth = p5LotConfig.isCustomShape && p5LotConfig.customShapePoints.length > 0 ? (Math.max(...p5LotConfig.customShapePoints.map(p => p.y)) - Math.min(...p5LotConfig.customShapePoints.map(p => p.y))) : p5LotConfig.depth;
+
 
         const viewCenterXFt = (currentLotWidth / 2) - p5PanOffset.x;
         const viewCenterYFt = (currentLotDepth / 2) - p5PanOffset.y;
@@ -460,7 +506,7 @@ function handleAddElement(type, specificData = {}, elementNameFromSpecific) {
         }
 
         elements.push(newElement);
-        addElementToThree(newElement, currentSeason); // Add to 3D scene
+        addElementToThree(newElement, currentSeason); 
         handleElementSelect(newElement.id, 'programmatic_add');
         if (p5Instance) redrawP5(p5Instance);
     } catch (error) { console.error(`Error adding element type ${type}:`, error); alert(`Failed to add ${type}.`); }
@@ -468,8 +514,7 @@ function handleAddElement(type, specificData = {}, elementNameFromSpecific) {
 
 function validateAndPlaceElement(element) {
     const p5LotConfig = p5Instance ? getLotConfigP5() : lotConfig;
-    if (p5LotConfig.isCustomShape) {
-        // Basic bounding box check for custom shapes first
+    if (p5LotConfig.isCustomShape && p5LotConfig.customShapePoints.length > 0) {
         const lotBoundingBox = p5LotConfig.customShapePoints.reduce((acc, p) => ({
             minX: Math.min(acc.minX, p.x), minY: Math.min(acc.minY, p.y),
             maxX: Math.max(acc.maxX, p.x), maxY: Math.max(acc.maxY, p.y)
@@ -477,22 +522,17 @@ function validateAndPlaceElement(element) {
 
         if (element.x < lotBoundingBox.minX || element.x + element.width > lotBoundingBox.maxX ||
             element.y < lotBoundingBox.minY || element.y + element.depth > lotBoundingBox.maxY) {
-            // For complex validation against polygon, p5.js side would be better.
-            // For now, allow if within bounding box, p5 sketch can show better visual cues.
-            // This is a simplified check. More robust point-in-polygon needed for accuracy with element rotation.
-            // For simplicity, we check the element's center point against the custom polygon in p5-sketch.js during drag.
         }
     } else {
-        // Rectangular lot boundary check
         element.x = Math.max(0, Math.min(element.x, p5LotConfig.width - element.width));
         element.y = Math.max(0, Math.min(element.y, p5LotConfig.depth - element.depth));
     }
-    return true; // Assuming placement is valid by default if not immediately out of bounds
+    return true; 
 }
 
 
 function handleElementSelect(elementId, sourceView = 'unknown') {
-    if (currentDrawingMode && elementId !== null) { // Don't allow selection when drawing
+    if (currentDrawingMode && elementId !== null) { 
         return;
     }
     if (elementId === null) {
@@ -503,13 +543,14 @@ function handleElementSelect(elementId, sourceView = 'unknown') {
         selectedElement = elements.find(el => el.id === elementId);
     }
     
-    showElementInfo(selectedElement, plantLibrary, customHouse); // Pass customHouse for info panel updates
-
     if (selectedElement && selectedElement.type === 'custom_house') {
-        showCustomHouseControls(selectedElement.height, selectedElement.roofType);
+        showCustomHouseControls(selectedElement.wallHeight, selectedElement.roofType, selectedElement.wallColor);
     } else {
         hideCustomHouseControls();
     }
+    // Always call showElementInfo, it will hide custom controls if element is not custom_house
+    showElementInfo(selectedElement, plantLibrary, customHouse); 
+
     if (p5Instance) redrawP5(p5Instance);
 }
 
@@ -527,19 +568,19 @@ function handleElementMove(elementId, newXFt, newYFt) {
         
         if(elementToMove.threeInstance) {
             const p5LotConfig = p5Instance ? getLotConfigP5() : lotConfig;
-            const lotCenterX = p5LotConfig.isCustomShape ? 
+            const lotCenterX = p5LotConfig.isCustomShape && p5LotConfig.customShapePoints.length > 0 ? 
                                 (Math.min(...p5LotConfig.customShapePoints.map(p => p.x)) + Math.max(...p5LotConfig.customShapePoints.map(p => p.x))) / 2 
                                 : p5LotConfig.width / 2;
-            const lotCenterZ = p5LotConfig.isCustomShape ?
+            const lotCenterZ = p5LotConfig.isCustomShape && p5LotConfig.customShapePoints.length > 0 ?
                                 (Math.min(...p5LotConfig.customShapePoints.map(p => p.y)) + Math.max(...p5LotConfig.customShapePoints.map(p => p.y))) / 2
                                 : p5LotConfig.depth / 2;
 
             const threeX = elementToMove.x + elementToMove.width / 2 - lotCenterX;
             const threeZ = elementToMove.y + elementToMove.depth / 2 - lotCenterZ;
-            let threeY = 0; // Default Y
+            let threeY = 0; 
 
             if (elementToMove.type === 'custom_house') {
-                threeY = 0; // Custom house base at ground
+                threeY = 0; 
             } else if (elementToMove.type === 'house' || elementToMove.type === 'shed' || elementToMove.isTree || elementToMove.isPlant) {
                 threeY = 0; 
             } else {
@@ -588,20 +629,20 @@ function handleDeleteSelectedElement() {
         if (typeof removeElementFromThree === 'function' && selectedElement.threeInstance) {
             removeElementFromThree(selectedElement.threeInstance);
         } else if (selectedElement.threeInstance?.parent) {
-            selectedElement.threeInstance.removeFromParent(); // Basic removal
+            selectedElement.threeInstance.removeFromParent(); 
         }
         elements = elements.filter(el => el.id !== elementIdToDelete);
     }
     
     selectedElement = null;
-    showElementInfo(null, plantLibrary, null); // Clear info panel
+    showElementInfo(null, plantLibrary, null); 
     if (p5Instance) redrawP5(p5Instance);
     if (currentView === '3D') renderThreeScene();
 }
 
 function handleSeasonChange(event) {
     currentSeason = event.target.value;
-    updateSeasonalAssetsInThree(elements, currentSeason); // Update regular elements
+    updateSeasonalAssetsInThree(elements, currentSeason); 
     if (customHouse && customHouse.threeInstance) {
         // If custom houses have seasonal variations in future, update here
     }
@@ -615,14 +656,14 @@ function handleSeasonChange(event) {
 }
 
 function updateSunlight(date, hour) {
-    const lat = 39.8900; const lon = -85.9300; // McCordsville, IN coordinates
+    const lat = 39.8900; const lon = -85.9300; 
     const currentDate = new Date(date); currentDate.setHours(hour, 0, 0, 0);
     try {
         if (typeof SunCalc !== 'undefined') {
             currentSunPosition = calculateSunPosition(currentDate, lat, lon);
             if (currentSunPosition) updateShadows(currentSunPosition);
-        } else { // Fallback if SunCalc fails
-            updateShadows({ altitude: Math.PI / 4, azimuth: Math.PI * 1.5 }); // Default sun position
+        } else { 
+            updateShadows({ altitude: Math.PI / 4, azimuth: Math.PI * 1.5 }); 
         }
     } catch (error) { console.error("Error updating sunlight:", error); }
 }
@@ -638,18 +679,22 @@ function saveDesign() {
     try {
         if (elements.length === 0 && !customHouse && !lotConfig.isCustomShape) { alert("Nothing to save!"); return; }
         const designData = {
-            version: "1.3.0", // Incremented version for new features
+            version: "1.4.0", // Incremented for wallHeight, roofType, wallColor
             createdAt: new Date().toISOString(),
-            lotConfiguration: lotConfig, // Save lot config
-            customHouseData: customHouse ? { // Save custom house data if exists
+            lotConfiguration: lotConfig, 
+            customHouseData: customHouse ? { 
                 ...customHouse,
-                outline: customHouse.outline, // Ensure outline (relative points) is saved
-                threeInstance: undefined // Don't save live THREE instance
+                // Ensure new properties are saved
+                wallHeight: customHouse.wallHeight,
+                roofType: customHouse.roofType,
+                wallColor: customHouse.wallColor,
+                height: undefined, // Remove old 'height' if it was different from wallHeight
+                threeInstance: undefined 
             } : null,
             elements: elements.map(el => ({
                 id: el.id, type: el.type, name: el.name, x: el.x, y: el.y, z: el.z,
                 width: el.width, depth: el.depth, height: el.height, rotation: el.rotation || 0, data: el.data,
-                threeInstance: undefined // Don't save live THREE instance
+                threeInstance: undefined 
             })),
             viewSettings: {
                 p5Scale: currentP5Scale, p5PanOffset: p5PanOffset, currentSeason: currentSeason,
@@ -688,7 +733,6 @@ if (loadDesignInput) {
                         throw new Error("Invalid design file format.");
                     }
                     
-                    // Clear existing scene
                     elements.forEach(el => {
                         if (typeof removeElementFromThree === 'function' && el.threeInstance) removeElementFromThree(el.threeInstance);
                         else if (el.threeInstance?.parent) el.threeInstance.removeFromParent();
@@ -698,22 +742,26 @@ if (loadDesignInput) {
                     }
                     elements = []; nextElementId = 0; selectedElement = null; customHouse = null;
 
-                    // Load Lot Configuration
                     if (designData.lotConfiguration) {
                         lotConfig = { ...designData.lotConfiguration };
                         updateLotConfigUI(lotConfig.width, lotConfig.depth, lotConfig.isCustomShape);
                         updateGroundPlane();
                         if (p5Instance) setLotConfigP5(lotConfig);
-                    } else { // Fallback to default if not in save file
+                    } else { 
                         lotConfig = { width: DEFAULT_LOT_WIDTH_FT, depth: DEFAULT_LOT_DEPTH_FT, isCustomShape: false, customShapePoints: [] };
                         updateGroundPlane();
                         if (p5Instance) setLotConfigP5(lotConfig);
                     }
 
-                    // Load Custom House
                     if (designData.customHouseData) {
-                        customHouse = { ...designData.customHouseData };
-                        // Ensure ID is unique if loading multiple times or alongside new elements
+                        const loadedHouseData = designData.customHouseData;
+                        customHouse = { ...loadedHouseData };
+                        // Handle potential old save format for height vs wallHeight
+                        customHouse.wallHeight = loadedHouseData.wallHeight || loadedHouseData.height || DEFAULT_CUSTOM_HOUSE_WALL_HEIGHT;
+                        customHouse.height = customHouse.wallHeight; // Ensure generic height matches wallHeight for info display
+                        customHouse.roofType = loadedHouseData.roofType || DEFAULT_CUSTOM_HOUSE_ROOF_TYPE;
+                        customHouse.wallColor = loadedHouseData.wallColor || DEFAULT_CUSTOM_HOUSE_WALL_COLOR;
+                        
                         if (customHouse.id === undefined || typeof customHouse.id !== 'string' || !customHouse.id.startsWith('custom_house_')) {
                             customHouse.id = 'custom_house_' + nextElementId++;
                         } else {
@@ -723,7 +771,6 @@ if (loadDesignInput) {
                         addCustomHouseToThree(customHouse);
                     }
 
-                    // Load other elements
                     if (designData.elements) {
                         designData.elements.forEach(elData => {
                             const newEl = { ...elData, rotation: elData.rotation || 0 };
@@ -748,11 +795,10 @@ if (loadDesignInput) {
                     alert("Design loaded successfully!");
                     if (p5Instance) redrawP5(p5Instance); 
                     renderThreeScene(); 
-                    showElementInfo(null, plantLibrary, null);
-                    hideCustomHouseControls();
+                    handleElementSelect(customHouse ? customHouse.id : null); // Select loaded house or clear selection
 
                 } catch (error) { console.error("Error loading design:", error); alert(`Failed to load design: ${error.message}`);
-                } finally { if (event.target) event.target.value = null; } // Reset file input
+                } finally { if (event.target) event.target.value = null; } 
             };
             reader.readAsText(file);
         }
@@ -769,11 +815,11 @@ function exportPNG() {
     try {
         let canvasToExport, filename = "VerdantVision_View_";
         if (currentView === '2D' && getP5Canvas()) {
-            if (p5Instance) redrawP5(p5Instance); // Ensure it's up-to-date
+            if (p5Instance) redrawP5(p5Instance); 
             canvasToExport = getP5Canvas();
             filename += "2D.png";
         } else if (currentView === '3D' && getThreeCanvas()) {
-            renderThreeScene(); // Ensure it's up-to-date
+            renderThreeScene(); 
             canvasToExport = getThreeCanvas();
             filename += "3D.png";
         } else {
@@ -794,7 +840,6 @@ function animate() {
         if (currentView === '3D') {
             renderThreeScene(); 
         }
-        // p5Instance handles its own redraws on demand, not in RAF to save battery
     }
     catch (error) { console.error("Error in animation loop:", error); }
 }
@@ -810,7 +855,6 @@ window.addEventListener('unhandledrejection', function(event) { console.error('U
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', main);
 else main();
 
-// Expose some state for debugging or advanced interaction if needed
 window.verdantApp = { 
     elements, selectedElement, customHouse, currentSeason, p5Instance, lotConfig,
     forceRedraw2D: () => { if(p5Instance) redrawP5(p5Instance); }, 
