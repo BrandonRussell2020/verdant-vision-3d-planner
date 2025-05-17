@@ -6,7 +6,7 @@
 
 body {
   font-family: 'Inter', sans-serif;
-  overscroll-behavior: none;
+  overscroll-behavior: none; /* Prevents pull-to-refresh on mobile */
 }
 
 .control-button {
@@ -20,10 +20,10 @@ body {
 }
 
 .control-button-secondary {
-  @apply bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded shadow-md transition-all duration-150 ease-in-out flex items-center justify-center;
+  @apply bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded shadow-md transition-all duration-150 ease-in-out flex items-center justify-center;
 }
 .control-button-secondary:active {
-  @apply bg-gray-800 transform scale-95;
+  @apply bg-gray-700 transform scale-95;
 }
 
 .control-button-sm {
@@ -68,10 +68,29 @@ body {
 .compass-label-n {
     @apply absolute top-0 left-1/2 -translate-x-1/2 text-xs font-semibold;
 }
-/* Optional: Add S, E, W labels if desired */
-/*
-.compass-label-s { @apply absolute bottom-0 left-1/2 -translate-x-1/2 text-xs; }
-.compass-label-e { @apply absolute top-1/2 right-0 -translate-y-1/2 text-xs; }
-.compass-label-w { @apply absolute top-1/2 left-0 -translate-y-1/2 text-xs; }
-*/
 
+/* Drawing Mode Styles */
+.drawing-mode-active {
+  @apply border-2 border-dashed border-blue-500 cursor-crosshair;
+}
+
+#drawingInstructions {
+  @apply pointer-events-none; /* So it doesn't interfere with canvas clicks */
+}
+
+/* Fallback for no-JS or p5 errors for drawing points/lines */
+.vertex-point-fallback {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background-color: #007bff;
+  border-radius: 50%;
+  border: 1px solid white;
+  transform: translate(-50%, -50%); /* Center the point */
+}
+
+.feedback-line-fallback {
+  position: absolute;
+  border-top: 2px dashed #007bff;
+  transform-origin: 0 0;
+}

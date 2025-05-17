@@ -1,232 +1,259 @@
 // js/ui-controls.js
-// Handles UI interactions, populating selectors, modals, and general event listeners.
 
-// --- DOM Element References ---
-const plantSelectorElement = document.getElementById('plantSelector');
-const treeSpeciesSelectorElement = document.getElementById('treeSpeciesSelector');
-const addPlantBtn = document.getElementById('addPlantBtn');
-const addTreeBtn = document.getElementById('addTreeBtn');
+// --- DOM Element References (ensure these are initialized in app.js or passed if needed) ---
+// It's generally better to get these from app.js to avoid null issues if DOM isn't ready
+// For example:
+// let customHouseControlsContainer; (initialized in app.js and passed or queried via a method)
 
-const toggleViewBtnElement = document.getElementById('toggleViewBtn');
-const zoomInBtn = document.getElementById('zoomInBtn');
-const zoomOutBtn = document.getElementById('zoomOutBtn');
+// --- Initialization & Event Listeners ---
+export function setupEventListeners(handlers) {
+    // General UI
+    document.getElementById('toggleViewBtn').addEventListener('click', handlers.onToggleView);
+    document.getElementById('zoomInBtn').addEventListener('click', () => handlers.onZoomIn());
+    document.getElementById('zoomOutBtn').addEventListener('click', () => handlers.onZoomOut());
+    document.getElementById('saveDesignBtn').addEventListener('click', handlers.onSaveDesign);
+    document.getElementById('loadDesignBtn').addEventListener('click', handlers.onLoadDesign);
+    document.getElementById('exportPngBtn').addEventListener('click', handlers.onExportPNG);
+    document.getElementById('exportGltfBtn').addEventListener('click', handlers.onExportGLTF);
+    document.getElementById('arPreviewBtn').addEventListener('click', handlers.onArPreview);
+    document.getElementById('seasonSelector').addEventListener('change', handlers.onSeasonChange);
+    document.getElementById('timeOfDaySlider').addEventListener('input', handlers.onTimeChange);
+    document.getElementById('orientNorthBtn').addEventListener('click', handlers.onOrientNorth);
 
-const saveDesignBtn = document.getElementById('saveDesignBtn');
-const loadDesignBtn = document.getElementById('loadDesignBtn');
-const exportPngBtn = document.getElementById('exportPngBtn');
-const exportGltfBtn = document.getElementById('exportGltfBtn');
-const arPreviewBtn = document.getElementById('arPreviewBtn');
 
-const seasonSelectorElement = document.getElementById('seasonSelector');
-const timeOfDaySliderElement = document.getElementById('timeOfDaySlider');
-const timeOfDayValueElement = document.getElementById('timeOfDayValue');
+    document.querySelectorAll('.element').forEach(button => {
+        button.addEventListener('click', (e) => {
+            handlers.onAddElement(e.currentTarget.dataset.type);
+        });
+    });
+    document.getElementById('addPlantBtn').addEventListener('click', handlers.onAddPlant);
+    document.getElementById('addTreeBtn').addEventListener('click', handlers.onAddTree);
+    document.getElementById('deleteElementBtn').addEventListener('click', handlers.onDeleteSelectedElement);
+    
+    const rotationInput = document.getElementById('elementRotationInput');
+    if (rotationInput) {
+        rotationInput.addEventListener('change', (e) => handlers.onElementRotationChange(e.target.value));
+        rotationInput.addEventListener('input', (e) => handlers.onElementRotationChange(e.target.value, true)); // Live update
+    }
+    
+    // Deselect on Escape key or click outside interactive areas
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            if (appContextRef && appContextRef.isDrawing && appContextRef.isDrawing()) {
+                 // If drawing, Escape should cancel drawing (handled in app.js via specific cancel buttons for now)
+            } else {
+                handlers.onDeselectAll();
+            }
+        }
+    });
+     // More robust deselection might be needed, e.g., click on main canvas area not on an element.
+     // This is partially handled by p5/three click handlers calling onElementSelect(null).
 
-const infoPanelElement = document.getElementById('infoPanel');
-const elementInfoContentElement = document.getElementById('elementInfoContent');
-const deleteElementBtn = document.getElementById('deleteElementBtn');
-const rotationControlContainer = document.getElementById('rotationControlContainer');
-const elementRotationInput = document.getElementById('elementRotationInput');
-const orientNorthBtn = document.getElementById('orientNorthBtn');
+    // Lot Configuration UI
+    document.getElementById('updateLotRectBtn').addEventListener('click', handlers.onUpdateLotRect);
+    document.getElementById('drawLotShapeBtn').addEventListener('click', handlers.onDrawLotShape);
+    document.getElementById('finishDrawingLotBtn').addEventListener('click', handlers.onFinishDrawingLot);
+    document.getElementById('cancelDrawingLotBtn').addEventListener('click', handlers.onCancelDrawingLot);
 
-// --- Modal Handling ---
+    // Home Builder UI
+    document.getElementById('activateHomeBuilderBtn').addEventListener('click', handlers.onActivateHomeBuilder);
+    document.getElementById('finishHomeBuilderBtn').addEventListener('click', handlers.onFinishHomeBuilder);
+    document.getElementById('cancelHomeBuilderBtn').addEventListener('click', handlers.onCancelHomeBuilder);
+
+    // Custom House Controls
+    document.getElementById('updateCustomHouseBtn').addEventListener('click', handlers.onUpdateCustomHouse);
+    document.getElementById('customHouseHeightInput').addEventListener('change', handlers.onUpdateCustomHouse);
+    document.getElementById('customHouseRoofTypeSelect').addEventListener('change', handlers.onUpdateCustomHouse);
+
+}
+
+// --- Modal Controls ---
 export function showModal(modalId) {
     const modal = document.getElementById(modalId);
-    if (modal) {
-        modal.classList.remove('hidden');
-        modal.classList.add('flex');
-    } else {
-        console.warn(`Modal with ID "${modalId}" not found.`); // Keep as warning
-    }
+    if (modal) modal.classList.add('flex');
 }
 
 export function hideModal(modalId) {
     const modal = document.getElementById(modalId);
-    if (modal) {
-        modal.classList.add('hidden');
-        modal.classList.remove('flex');
+    if (modal) modal.classList.remove('flex');
+    if (modalId === 'welcomeModal') localStorage.setItem('visitedVerdantVision', 'true');
+}
+
+// --- View Toggling ---
+export function toggleView(currentView, p5Container, threeContainer, toggleBtn) {
+    if (currentView === '2D') {
+        p5Container.classList.add('hidden');
+        threeContainer.classList.remove('hidden');
+        toggleBtn.innerHTML = '<i class="fas fa-ruler-combined mr-1"></i>3D View';
+        return '3D';
     } else {
-        console.warn(`Modal with ID "${modalId}" not found.`); // Keep as warning
+        threeContainer.classList.add('hidden');
+        p5Container.classList.remove('hidden');
+        toggleBtn.innerHTML = '<i class="fas fa-cube mr-1"></i>2D View';
+        return '2D';
     }
 }
 
-// --- Populating Selectors ---
-export function populatePlantSelector(plantLibrary, selectorEl = plantSelectorElement) {
-    if (!selectorEl || !plantLibrary) {
-        // console.warn("Plant selector or library not provided."); // Can be noisy if called before DOM ready
-        return;
+// --- Element Information Panel ---
+export function showElementInfo(element, plantLibrary, customHouseData) {
+    const infoContent = document.getElementById('elementInfoContent');
+    const deleteBtn = document.getElementById('deleteElementBtn');
+    const rotationControls = document.getElementById('rotationControlContainer');
+    const rotationInput = document.getElementById('elementRotationInput');
+    const customHouseControls = document.getElementById('customHouseControlsContainer');
+
+
+    if (element) {
+        let detailsHtml = `<strong class="text-gray-800">${element.name || element.type}</strong><br>`;
+        detailsHtml += `ID: ${element.id}<br>`;
+        detailsHtml += `Type: ${element.type}<br>`;
+        detailsHtml += `Position (ft): X: ${element.x.toFixed(1)}, Y: ${element.y.toFixed(1)}<br>`;
+        if (element.width && element.depth) {
+            detailsHtml += `Size (ft): W: ${element.width.toFixed(1)}, D: ${element.depth.toFixed(1)}`;
+            if (element.height) detailsHtml += `, H: ${element.height.toFixed(1)}`;
+            detailsHtml += `<br>`;
+        }
+        if (element.rotation !== undefined) {
+            detailsHtml += `Rotation: ${element.rotation}°<br>`;
+        }
+
+        if (element.isPlant && element.data && plantLibrary) {
+            const plantInfo = plantLibrary.find(p => p.id === element.data.id);
+            if (plantInfo) {
+                detailsHtml += `Variety: ${plantInfo.name}<br>`;
+                if (plantInfo.description) detailsHtml += `Desc: ${plantInfo.description}<br>`;
+            }
+        } else if (element.isTree && element.data) {
+             detailsHtml += `Species: ${element.data.displayName || element.data.species}<br>`;
+             detailsHtml += `Season: ${element.data.currentSeason || 'N/A'}<br>`;
+        } else if (element.type === 'custom_house' && customHouseData) {
+            detailsHtml += `Roof: ${customHouseData.roofType}<br>`;
+            showCustomHouseControls(customHouseData.height, customHouseData.roofType);
+        } else {
+            hideCustomHouseControls();
+        }
+
+
+        infoContent.innerHTML = detailsHtml;
+        deleteBtn.classList.remove('hidden');
+        
+        if (appContextRef && appContextRef.ROTATABLE_ELEMENT_TYPES && appContextRef.ROTATABLE_ELEMENT_TYPES.includes(element.type)) {
+            rotationInput.value = Math.round(element.rotation || 0);
+            rotationControls.classList.remove('hidden');
+        } else {
+            rotationControls.classList.add('hidden');
+        }
+
+    } else {
+        infoContent.innerHTML = "Select an element to see its details.";
+        deleteBtn.classList.add('hidden');
+        rotationControls.classList.add('hidden');
+        hideCustomHouseControls();
     }
-    while (selectorEl.options.length > 1) {
-        selectorEl.remove(1);
-    }
+    document.getElementById('infoPanel').classList.remove('hidden');
+}
+
+
+// --- Plant & Tree Selectors ---
+export function populatePlantSelector(plantLibrary, selectorElement) {
+    if (!plantLibrary || !selectorElement) return;
     plantLibrary.forEach(plant => {
         const option = document.createElement('option');
         option.value = plant.id;
         option.textContent = plant.name;
-        selectorEl.appendChild(option);
+        selectorElement.appendChild(option);
     });
 }
+// Tree selector is populated in app.js using treeManifest
 
-export function populateTreeSelector(treeManifest, selectorEl = treeSpeciesSelectorElement) {
-    if (!selectorEl || !treeManifest) {
-        // console.warn("Tree selector or manifest not provided."); // Can be noisy
-        return;
-    }
-     while (selectorEl.options.length > 0) {
-        selectorEl.remove(0);
-    }
-    const defaultOption = document.createElement('option');
-    defaultOption.value = "";
-    defaultOption.textContent = "-- Select Tree --";
-    selectorEl.appendChild(defaultOption);
-    for (const key in treeManifest) {
-        const option = document.createElement('option');
-        option.value = key;
-        option.textContent = treeManifest[key].displayName;
-        selectorEl.appendChild(option);
-    }
-}
-
-
-// --- Event Listener Setup ---
-export function setupEventListeners(callbacks) {
-    if (toggleViewBtnElement) toggleViewBtnElement.addEventListener('click', callbacks.onToggleView);
-
-    const genericElementButtons = document.querySelectorAll('button.element');
-    genericElementButtons.forEach(button => {
-        button.addEventListener('click', (event) => {
-            const targetButton = event.currentTarget; 
-            const elementType = targetButton.dataset.type;
-            if (elementType && callbacks.onAddElement) {
-                callbacks.onAddElement(elementType);
-            }
-        });
-    });
-
-    if (addPlantBtn && callbacks.onAddPlant) addPlantBtn.addEventListener('click', callbacks.onAddPlant);
-    if (addTreeBtn && callbacks.onAddTree) addTreeBtn.addEventListener('click', callbacks.onAddTree);
-
-    if (zoomInBtn && callbacks.onZoomIn) zoomInBtn.addEventListener('click', callbacks.onZoomIn);
-    if (zoomOutBtn && callbacks.onZoomOut) zoomOutBtn.addEventListener('click', callbacks.onZoomOut);
-    
-    if (saveDesignBtn && callbacks.onSaveDesign) saveDesignBtn.addEventListener('click', callbacks.onSaveDesign);
-    if (loadDesignBtn && callbacks.onLoadDesign) loadDesignBtn.addEventListener('click', callbacks.onLoadDesign);
-
-    if (exportPngBtn && callbacks.onExportPNG) exportPngBtn.addEventListener('click', callbacks.onExportPNG);
-    if (exportGltfBtn && callbacks.onExportGLTF) exportGltfBtn.addEventListener('click', callbacks.onExportGLTF);
-    if (arPreviewBtn && callbacks.onArPreview) arPreviewBtn.addEventListener('click', callbacks.onArPreview);
-
-    if (seasonSelectorElement && callbacks.onSeasonChange) seasonSelectorElement.addEventListener('change', callbacks.onSeasonChange);
-    if (timeOfDaySliderElement && callbacks.onTimeChange) timeOfDaySliderElement.addEventListener('input', callbacks.onTimeChange);
-    if (deleteElementBtn && callbacks.onDeleteSelectedElement) deleteElementBtn.addEventListener('click', callbacks.onDeleteSelectedElement);
-
-    if (elementRotationInput && callbacks.onElementRotationChange) {
-        elementRotationInput.addEventListener('change', (event) => { 
-            callbacks.onElementRotationChange(parseFloat(event.target.value));
-        });
-         elementRotationInput.addEventListener('input', (event) => { 
-            callbacks.onElementRotationChange(parseFloat(event.target.value), true); 
-        });
-    }
-
-    if (orientNorthBtn && callbacks.onOrientNorth) {
-        orientNorthBtn.addEventListener('click', callbacks.onOrientNorth);
-    }
-
-    document.addEventListener('keydown', (event) => {
-        const activeEl = document.activeElement;
-        const isInputFocused = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'SELECT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable);
-
-        if (isInputFocused && event.key !== 'Escape') return;
-
-        const panStep = 5;
-        switch (event.key) {
-            case 'ArrowLeft': if (callbacks.onPan) { callbacks.onPan(-panStep, 0); event.preventDefault(); } break;
-            case 'ArrowRight': if (callbacks.onPan) { callbacks.onPan(panStep, 0); event.preventDefault(); } break;
-            case 'ArrowUp': if (callbacks.onPan) { callbacks.onPan(0, -panStep); event.preventDefault(); } break;
-            case 'ArrowDown': if (callbacks.onPan) { callbacks.onPan(0, panStep); event.preventDefault(); } break;
-            case '+': case '=': if (callbacks.onZoomIn) { callbacks.onZoomIn(); event.preventDefault(); } break;
-            case '-': case '_': if (callbacks.onZoomOut) { callbacks.onZoomOut(); event.preventDefault(); } break;
-            case 'Delete': case 'Backspace': 
-                if (callbacks.onDeleteSelectedElement && !isInputFocused) {
-                    callbacks.onDeleteSelectedElement();
-                    event.preventDefault(); 
-                }
-                break;
-            case 'Escape': if (callbacks.onDeselectAll) callbacks.onDeselectAll(); break;
-        }
-    });
-}
-
-// --- Displaying Element Information ---
-const ROTATABLE_ELEMENT_TYPES_UI = ['house', 'shed', 'raised_bed', 'compost_bin', 'bench', 'patio', 'fire_pit', 'rain_barrel']; 
-
-export function showElementInfo(element, plantList = []) {
-    if (!infoPanelElement || !elementInfoContentElement || !deleteElementBtn || !rotationControlContainer || !elementRotationInput) {
-        // console.warn("One or more Info panel UI elements not found for showElementInfo."); // Can be noisy
-        return;
-    }
-
-    if (element) {
-        infoPanelElement.classList.remove('hidden');
-        infoPanelElement.classList.add('md:block');
-        deleteElementBtn.classList.remove('hidden');
-
-        let html = `<h4 class="font-bold text-gray-800">${element.name || element.type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())} (ID: ${element.id})</h4>`;
-        html += `<p class="text-xs text-gray-500">Type: ${element.type.replace(/_/g, ' ')}</p>`;
-        html += `<p>Position: X: ${element.x.toFixed(1)}ft, Y: ${element.y.toFixed(1)}ft</p>`;
-        html += `<p>Size: W: ${element.width.toFixed(1)}ft, D: ${element.depth.toFixed(1)}ft, H: ${element.height.toFixed(1)}ft</p>`;
-
-        if (ROTATABLE_ELEMENT_TYPES_UI.includes(element.type)) {
-            rotationControlContainer.classList.remove('hidden');
-            elementRotationInput.value = element.rotation || 0;
-        } else {
-            rotationControlContainer.classList.add('hidden');
-        }
-
-        if (element.isPlant && element.data) {
-            const plantDetails = plantList.find(p => p.id === element.data.id) || element.data;
-            html += `<p>Plant: ${plantDetails.name || 'N/A'}</p>`;
-            if (plantDetails.sun) html += `<p><i class="fas fa-sun mr-1 text-yellow-500"></i>Sun: ${plantDetails.sun}</p>`;
-            if (plantDetails.soil) html += `<p><i class="fas fa-spa mr-1 text-yellow-700"></i>Soil: ${plantDetails.soil}</p>`;
-            if (plantDetails.watering) html += `<p><i class="fas fa-tint mr-1 text-blue-500"></i>Watering: ${plantDetails.watering}</p>`;
-            if (plantDetails.notes) html += `<p class="mt-1 text-xs italic text-gray-500">Note: ${plantDetails.notes}</p>`;
-        } else if (element.isTree && element.data) {
-            html += `<p>Species: ${element.data.displayName || element.data.species?.replace(/_/g, ' ') || 'N/A'}</p>`;
-            html += `<p>Set Height: ${element.data.height?.toFixed(1)}ft, Canopy: ${element.data.canopy?.toFixed(1)}ft</p>`;
-            if (element.data.currentSeason) html += `<p>Season Display: ${element.data.currentSeason.replace(/\b\w/g, l => l.toUpperCase())}</p>`;
-        }
-        
-        elementInfoContentElement.innerHTML = html;
-    } else {
-        elementInfoContentElement.innerHTML = 'Select an element to see its details, or click an empty area to deselect.';
-        deleteElementBtn.classList.add('hidden');
-        rotationControlContainer.classList.add('hidden');
-    }
-}
-
-// --- View Toggling ---
-export function toggleView(currentView, p5Container, threeContainer, toggleButton) {
-    let newView = currentView;
-    if (currentView === '2D') {
-        if (p5Container) p5Container.classList.add('hidden');
-        if (threeContainer) threeContainer.classList.remove('hidden');
-        if (toggleButton) toggleButton.innerHTML = '<i class="fas fa-ruler-combined mr-1"></i>3D View';
-        newView = '3D';
-    } else {
-        if (threeContainer) threeContainer.classList.add('hidden');
-        if (p5Container) p5Container.classList.remove('hidden');
-        if (toggleButton) toggleButton.innerHTML = '<i class="fas fa-sync-alt mr-1"></i>2D View';
-        newView = '2D';
-    }
-    // console.log("View toggled to:", newView); // Debug
-    window.dispatchEvent(new Event('resize'));
-    return newView;
-}
-
-// --- Time of Day Label Update ---
-export function updateTimeOfDayLabel(hour, labelElement = timeOfDayValueElement) {
+// --- Time of Day UI ---
+export function updateTimeOfDayLabel(hour, labelElement) {
     if (!labelElement) return;
-    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const amPm = hour < 12 || hour === 24 ? 'AM' : 'PM';
     const displayHour = hour % 12 === 0 ? 12 : hour % 12;
-    labelElement.textContent = `${displayHour}:00 ${ampm}`;
+    labelElement.textContent = `${displayHour}:00 ${amPm}`;
+}
+
+
+// --- Lot and Home Builder UI Updates ---
+export function updateLotConfigUI(width, depth, isDrawingLot) {
+    const lotWidthInput = document.getElementById('lotWidthInput');
+    const lotDepthInput = document.getElementById('lotDepthInput');
+    const updateLotRectBtn = document.getElementById('updateLotRectBtn');
+    const drawLotShapeBtn = document.getElementById('drawLotShapeBtn');
+    const finishDrawingLotBtn = document.getElementById('finishDrawingLotBtn');
+    const cancelDrawingLotBtn = document.getElementById('cancelDrawingLotBtn');
+
+    if (isDrawingLot) {
+        lotWidthInput.disabled = true;
+        lotDepthInput.disabled = true;
+        updateLotRectBtn.classList.add('hidden');
+        drawLotShapeBtn.classList.add('hidden');
+        finishDrawingLotBtn.classList.remove('hidden');
+        cancelDrawingLotBtn.classList.remove('hidden');
+    } else {
+        lotWidthInput.disabled = false;
+        lotDepthInput.disabled = false;
+        if (width) lotWidthInput.value = parseFloat(width).toFixed(1);
+        if (depth) lotDepthInput.value = parseFloat(depth).toFixed(1);
+        updateLotRectBtn.classList.remove('hidden');
+        drawLotShapeBtn.classList.remove('hidden');
+        finishDrawingLotBtn.classList.add('hidden');
+        cancelDrawingLotBtn.classList.add('hidden');
+    }
+}
+
+export function updateHomeBuilderUI(isDrawingHouse) {
+    const activateHomeBuilderBtn = document.getElementById('activateHomeBuilderBtn');
+    const finishHomeBuilderBtn = document.getElementById('finishHomeBuilderBtn');
+    const cancelHomeBuilderBtn = document.getElementById('cancelHomeBuilderBtn');
+
+    if (isDrawingHouse) {
+        activateHomeBuilderBtn.classList.add('hidden');
+        finishHomeBuilderBtn.classList.remove('hidden');
+        cancelHomeBuilderBtn.classList.remove('hidden');
+    } else {
+        activateHomeBuilderBtn.classList.remove('hidden');
+        finishHomeBuilderBtn.classList.add('hidden');
+        cancelHomeBuilderBtn.classList.add('hidden');
+    }
+}
+
+
+export function showDrawingInstructions(element, mode) {
+    if (!element) return;
+    let text = "Click to place points. Right-click or press 'Escape' to cancel. Press 'Enter' or click 'Finish' button to complete.";
+    if (mode === 'lot_polygon') text = "Drawing Lot: " + text;
+    else if (mode === 'home_builder_polygon') text = "Drawing House: " + text;
+    element.textContent = text;
+    element.classList.remove('hidden');
+}
+
+export function hideDrawingInstructions(element) {
+    if (element) element.classList.add('hidden');
+}
+
+export function showCustomHouseControls(height, roofType) {
+    const container = document.getElementById('customHouseControlsContainer');
+    const heightInput = document.getElementById('customHouseHeightInput');
+    const roofSelect = document.getElementById('customHouseRoofTypeSelect');
+    if (container && heightInput && roofSelect) {
+        heightInput.value = height;
+        roofSelect.value = roofType;
+        container.classList.remove('hidden');
+    }
+}
+
+export function hideCustomHouseControls() {
+    const container = document.getElementById('customHouseControlsContainer');
+    if (container) {
+        container.classList.add('hidden');
+    }
+}
+
+
+// --- Context for App.js (Optional, if ui-controls needs to access app state directly) ---
+let appContextRef = null; 
+export function setAppContextForUiControls(context) {
+    appContextRef = context;
 }

@@ -588,6 +588,10 @@ video {
   }
 }
 
+.visible {
+  visibility: visible;
+}
+
 .fixed {
   position: fixed;
 }
@@ -602,6 +606,14 @@ video {
 
 .inset-0 {
   inset: 0px;
+}
+
+.left-1\/2 {
+  left: 50%;
+}
+
+.top-2 {
+  top: 0.5rem;
 }
 
 .z-50 {
@@ -645,12 +657,20 @@ video {
   margin-top: 0.5rem;
 }
 
+.mt-3 {
+  margin-top: 0.75rem;
+}
+
 .block {
   display: block;
 }
 
 .flex {
   display: flex;
+}
+
+.grid {
+  display: grid;
 }
 
 .hidden {
@@ -693,12 +713,25 @@ video {
   width: 100%;
 }
 
+.w-64 {
+  width: 16rem;
+}
+
 .flex-1 {
   flex: 1 1 0%;
 }
 
 .flex-shrink-0 {
   flex-shrink: 0;
+}
+
+.shrink {
+  flex-shrink: 1;
+}
+
+.-translate-x-1\/2 {
+  --tw-translate-x: -50%;
+  transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));
 }
 
 .transform {
@@ -821,6 +854,11 @@ video {
   border-color: rgb(248 113 113 / var(--tw-border-opacity, 1));
 }
 
+.bg-blue-100 {
+  --tw-bg-opacity: 1;
+  background-color: rgb(219 234 254 / var(--tw-bg-opacity, 1));
+}
+
 .bg-brand-green {
   --tw-bg-opacity: 1;
   background-color: rgb(76 175 80 / var(--tw-bg-opacity, 1));
@@ -862,6 +900,10 @@ video {
 
 .p-1 {
   padding: 0.25rem;
+}
+
+.p-1\.5 {
+  padding: 0.375rem;
 }
 
 .p-2 {
@@ -942,6 +984,11 @@ video {
   color: rgb(59 130 246 / var(--tw-text-opacity, 1));
 }
 
+.text-blue-700 {
+  --tw-text-opacity: 1;
+  color: rgb(29 78 216 / var(--tw-text-opacity, 1));
+}
+
 .text-gray-500 {
   --tw-text-opacity: 1;
   color: rgb(107 114 128 / var(--tw-text-opacity, 1));
@@ -1017,6 +1064,10 @@ video {
   box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
 }
 
+.outline {
+  outline-style: solid;
+}
+
 .filter {
   filter: var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow);
 }
@@ -1024,6 +1075,7 @@ video {
 body {
   font-family: 'Inter', sans-serif;
   overscroll-behavior: none;
+  /* Prevents pull-to-refresh on mobile */
 }
 
 .control-button {
@@ -1091,7 +1143,7 @@ body {
 
 .control-button-secondary:hover {
   --tw-bg-opacity: 1;
-  background-color: rgb(55 65 81 / var(--tw-bg-opacity, 1));
+  background-color: rgb(75 85 99 / var(--tw-bg-opacity, 1));
 }
 
 .control-button-secondary:active {
@@ -1099,7 +1151,7 @@ body {
   --tw-scale-y: .95;
   transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));
   --tw-bg-opacity: 1;
-  background-color: rgb(31 41 55 / var(--tw-bg-opacity, 1));
+  background-color: rgb(55 65 81 / var(--tw-bg-opacity, 1));
 }
 
 .control-button-sm {
@@ -1239,13 +1291,39 @@ body {
   font-weight: 600;
 }
 
-/* Optional: Add S, E, W labels if desired */
+/* Drawing Mode Styles */
 
-/*
-.compass-label-s { @apply absolute bottom-0 left-1/2 -translate-x-1/2 text-xs; }
-.compass-label-e { @apply absolute top-1/2 right-0 -translate-y-1/2 text-xs; }
-.compass-label-w { @apply absolute top-1/2 left-0 -translate-y-1/2 text-xs; }
-*/
+.drawing-mode-active {
+  cursor: crosshair;
+  border-width: 2px;
+  border-style: dashed;
+  --tw-border-opacity: 1;
+  border-color: rgb(59 130 246 / var(--tw-border-opacity, 1));
+}
+
+#drawingInstructions {
+  pointer-events: none;
+  /* So it doesn't interfere with canvas clicks */
+}
+
+/* Fallback for no-JS or p5 errors for drawing points/lines */
+
+.vertex-point-fallback {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background-color: #007bff;
+  border-radius: 50%;
+  border: 1px solid white;
+  transform: translate(-50%, -50%);
+  /* Center the point */
+}
+
+.feedback-line-fallback {
+  position: absolute;
+  border-top: 2px dashed #007bff;
+  transform-origin: 0 0;
+}
 
 .hover\:text-gray-800:hover {
   --tw-text-opacity: 1;
@@ -1269,8 +1347,8 @@ body {
     max-height: 25vh;
   }
 
-  .md\:w-64 {
-    width: 16rem;
+  .md\:w-72 {
+    width: 18rem;
   }
 
   .md\:max-w-md {
@@ -1286,4 +1364,3 @@ body {
     line-height: 2rem;
   }
 }
-

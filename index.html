@@ -11,7 +11,7 @@
         window.addEventListener('load', () => {
             const bodyStyles = getComputedStyle(document.body);
             const testElement = document.createElement('div');
-            testElement.className = 'bg-brand-green';
+            testElement.className = 'bg-brand-green'; 
             document.body.appendChild(testElement);
             const bgColor = getComputedStyle(testElement).backgroundColor;
             document.body.removeChild(testElement);
@@ -23,10 +23,15 @@
     </script>
     <style>
         #loading-screen { position: fixed; width: 100%; height: 100%; background: white; z-index: 1000; display: flex; justify-content: center; align-items: center; font-size: 1.5em; color: #333; }
-        #p5CanvasContainer { width: 100%; height: 100%; overflow: hidden; position: relative; border: 1px solid #ccc; background-color: #f0f0f0; }
-        /* Ensure threeCanvasContainer is also relative for absolute positioning of compass */
-        #threeCanvasContainer { width: 100%; height: 100%; overflow: hidden; position: relative; border: 1px solid #ccc; background-color: #e0e0e0; }
-        canvas { display: block; }
+        /* Ensure canvas containers fill their parent (main) and allow canvas inside to fill them */
+        #p5CanvasContainer, #threeCanvasContainer { 
+            width: 100%; height: 100%; 
+            overflow: hidden; position: relative; 
+            background-color: #f0f0f0; /* Fallback, will be covered by canvas */
+        }
+        #threeCanvasContainer { background-color: #e0e0e0; } /* Specific for 3D */
+
+        canvas { display: block; /* Critical for p5 and three.js canvas to fill container */ }
         .modal { display: none; }
         .modal.flex { display: flex; }
         .no-tailwind body { background: #f0f0f0; color: #333; font-family: Arial, sans-serif; }
@@ -36,6 +41,17 @@
         .no-tailwind .control-button-danger:hover { background: #da190b; }
         .no-tailwind #sidebar { background: #ddd; padding: 10px; width: 250px; }
         .no-tailwind header { background: #333; color: white; padding: 15px; text-align: center;}
+        .drawing-mode-active { border: 2px dashed #007bff !important; cursor: crosshair !important; }
+        .vertex-point { fill: #007bff; stroke: white; stroke-width: 1px; }
+        .feedback-line { stroke: #007bff; stroke-dasharray: 3,3; }
+        .polygon-preview { fill: rgba(0,123,255,0.1); stroke: #007bff; stroke-width: 1.5px; }
+        .invalid-polygon-preview { fill: rgba(255,0,0,0.1); stroke: #ff0000; stroke-width: 1.5px; }
+
+        /* Ensure main content area can shrink to prevent overflow issues with flexbox */
+        main.flex-1 {
+            min-height: 0;
+            min-width: 0; /* Also useful for horizontal flex items */
+        }
     </style>
 </head>
 <body class="flex flex-col h-screen overflow-hidden bg-gray-100 font-sans">
@@ -50,7 +66,9 @@
             </div>
             <p class="mb-3 text-gray-700">Quick Start Guide:</p>
             <ul class="list-disc list-inside mb-4 space-y-1 text-gray-600">
-                <li>Select elements like 'House' or 'Raised Bed' from the left sidebar.</li>
+                <li>Define your lot, or use the default.</li>
+                <li>Use the 'Home Builder' to draw your house, or add a pre-defined house.</li>
+                <li>Select other elements like 'Raised Bed' from the sidebar.</li>
                 <li>Click to add them to the 2D plan. Drag to position.</li>
                 <li>Use the '2D View' / '3D View' button to toggle perspectives.</li>
                 <li>Navigate in 3D using mouse orbit, zoom, and pan.</li>
@@ -76,12 +94,38 @@
         </div>
     </header>
 
-    <div class="flex flex-1 overflow-hidden">
-        <aside id="sidebar" class="w-56 md:w-64 bg-gray-50 p-3 space-y-3 overflow-y-auto panel flex-shrink-0 shadow-md">
-            <h3 class="text-lg font-semibold border-b pb-2 text-gray-700">Add Elements</h3>
+    <div class="flex flex-1 overflow-hidden"> <aside id="sidebar" class="w-56 md:w-72 bg-gray-50 p-3 space-y-3 overflow-y-auto panel flex-shrink-0 shadow-md">
+            <h3 class="text-lg font-semibold border-b pb-2 text-gray-700">Design Tools</h3>
+            
+            <div id="lotConfigPanel">
+                <h4 class="font-medium text-sm text-gray-600 mb-1">Lot Configuration</h4>
+                <div class="space-y-1">
+                    <div>
+                        <label for="lotWidthInput" class="block text-xs font-medium text-gray-500">Width (ft):</label>
+                        <input type="number" id="lotWidthInput" value="173.2" class="mt-1 p-1.5 border rounded w-full text-sm text-gray-700">
+                    </div>
+                    <div>
+                        <label for="lotDepthInput" class="block text-xs font-medium text-gray-500">Depth (ft):</label>
+                        <input type="number" id="lotDepthInput" value="173.2" class="mt-1 p-1.5 border rounded w-full text-sm text-gray-700">
+                    </div>
+                    <button id="updateLotRectBtn" class="control-button control-button-sm w-full text-left mt-1"><i class="fas fa-vector-square mr-2"></i>Update Rectangular Lot</button>
+                    <button id="drawLotShapeBtn" class="control-button control-button-sm w-full text-left mt-1"><i class="fas fa-draw-polygon mr-2"></i>Draw Custom Lot</button>
+                    <button id="finishDrawingLotBtn" class="control-button control-button-secondary control-button-sm w-full text-left mt-1 hidden"><i class="fas fa-check-circle mr-2"></i>Finish Lot Shape</button>
+                    <button id="cancelDrawingLotBtn" class="control-button control-button-danger control-button-sm w-full text-left mt-1 hidden"><i class="fas fa-times-circle mr-2"></i>Cancel Lot Shape</button>
+                </div>
+            </div>
+
+            <div id="homeBuilderPanel">
+                <h4 class="font-medium text-sm text-gray-600 mb-1 mt-2">Home Builder</h4>
+                 <button id="activateHomeBuilderBtn" class="control-button control-button-sm w-full text-left"><i class="fas fa-drafting-compass mr-2"></i>Draw House Outline</button>
+                 <button id="finishHomeBuilderBtn" class="control-button control-button-secondary control-button-sm w-full text-left mt-1 hidden"><i class="fas fa-check-circle mr-2"></i>Finish House</button>
+                 <button id="cancelHomeBuilderBtn" class="control-button control-button-danger control-button-sm w-full text-left mt-1 hidden"><i class="fas fa-times-circle mr-2"></i>Cancel House</button>
+            </div>
+            
+            <h3 class="text-lg font-semibold border-b pb-2 text-gray-700 mt-3">Add Elements</h3>
             <div>
                 <h4 class="font-medium text-sm text-gray-600 mb-1">Structures</h4>
-                <button class="element control-button w-full text-left text-sm" data-type="house"><i class="fas fa-home mr-2"></i>House (40'x50')</button>
+                <button class="element control-button w-full text-left text-sm" data-type="house"><i class="fas fa-home mr-2"></i>Default House (40'x50')</button>
                 <button class="element control-button w-full text-left text-sm mt-1" data-type="shed"><i class="fas fa-store-alt mr-2"></i>Shed (10'x10')</button>
             </div>
             <div>
@@ -129,9 +173,9 @@
             </div>
         </aside>
 
-        <main class="flex-1 relative bg-white border-l border-gray-300">
+        <main class="flex-1 relative bg-white border-l border-gray-300"> 
             <div id="p5CanvasContainer" class="w-full h-full cursor-grab active:cursor-grabbing">
-            </div>
+                </div>
             <div id="threeCanvasContainer" class="w-full h-full hidden cursor-grab active:cursor-grabbing">
                 <div id="compassContainer3D" class="compass-container">
                     <div id="compassNorthLabel" class="compass-label-n">N</div>
@@ -141,9 +185,12 @@
             <div id="canvasErrorFallback" class="hidden absolute inset-0 flex justify-center items-center bg-red-100 text-red-700 p-4 text-center">
                 <i class="fas fa-exclamation-triangle mr-2"></i> Error initializing canvas. Try refreshing or check browser compatibility.
             </div>
+             <div id="drawingInstructions" class="absolute top-2 left-1/2 -translate-x-1/2 bg-blue-100 text-blue-700 p-2 rounded shadow text-sm hidden">
+                Click to place points. Right-click or press 'Escape' to cancel. Press 'Enter' or click 'Finish' to complete.
+            </div>
         </main>
 
-        <footer id="infoPanel" class="bg-gray-100 p-3 h-auto md:h-auto max-h-[30vh] md:max-h-[25vh] shadow-inner overflow-y-auto panel hidden md:block flex-shrink-0 border-t border-gray-300">
+        <footer id="infoPanel" class="bg-gray-100 p-3 h-auto md:h-auto max-h-[30vh] md:max-h-[25vh] shadow-inner overflow-y-auto panel hidden md:block flex-shrink-0 border-t border-gray-300 w-64">
             <div class="flex justify-between items-start">
                 <div>
                     <h3 class="text-md font-semibold text-gray-700">Element Information</h3>
@@ -151,6 +198,21 @@
                     <div id="rotationControlContainer" class="mt-2 hidden">
                         <label for="elementRotationInput" class="block text-xs font-medium text-gray-700">Rotation (degrees):</label>
                         <input type="number" id="elementRotationInput" name="elementRotationInput" min="0" max="359" step="1" class="mt-1 p-1 border border-gray-300 rounded-md shadow-sm text-sm w-24">
+                    </div>
+                    <div id="customHouseControlsContainer" class="mt-2 hidden">
+                        <h4 class="font-medium text-sm text-gray-600 mb-1">Custom House</h4>
+                        <div>
+                            <label for="customHouseHeightInput" class="block text-xs font-medium text-gray-500">Height (ft):</label>
+                            <input type="number" id="customHouseHeightInput" value="15" min="5" max="50" step="1" class="mt-1 p-1.5 border rounded w-full text-sm text-gray-700">
+                        </div>
+                        <div class="mt-1">
+                            <label for="customHouseRoofTypeSelect" class="block text-xs font-medium text-gray-500">Roof Type:</label>
+                            <select id="customHouseRoofTypeSelect" class="mt-1 p-1.5 border rounded w-full text-sm text-gray-700">
+                                <option value="flat">Flat</option>
+                                <option value="gabled">Gabled</option>
+                            </select>
+                        </div>
+                        <button id="updateCustomHouseBtn" class="control-button control-button-sm w-full text-left mt-2"><i class="fas fa-ruler-combined mr-2"></i>Update House</button>
                     </div>
                 </div>
                 <button id="deleteElementBtn" class="control-button-danger hidden ml-4 flex-shrink-0"><i class="fas fa-trash-alt mr-1"></i>Delete</button>
